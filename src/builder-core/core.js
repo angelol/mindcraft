@@ -208,6 +208,14 @@ export class BuilderCore {
 
     async build(request) {
         const registry = await this.store.load();
+        if (getActiveProject(registry)) {
+            return {
+                ok: false,
+                message: 'A builder project is already active. Use !buildEdit, !buildUndo, or !buildRedo.',
+                commands: [],
+            };
+        }
+
         const dimensions = parseDimensions(request);
         const material = parseMaterial(request);
         const blocks = createRectBlocks({ ...dimensions, material });

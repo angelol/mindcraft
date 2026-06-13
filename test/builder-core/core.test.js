@@ -88,6 +88,27 @@ test('BuilderCore can replace material on active selection and undo/redo it', as
     ]);
 });
 
+test('BuilderCore rejects a second build while a project is active', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 3x1x1');
+    const result = await core.build('build a stone house 1x1x1');
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.commands, []);
+    assert.match(result.message, /already active/);
+    assert.deepEqual(world.getAllBlocks(), [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'stone' },
+        { pos: [2, 0, 0], block: 'stone' },
+    ]);
+
+    const registry = await store.load();
+    assert.deepEqual(registry.projects.project_001.blockStates, world.getAllBlocks());
+});
+
 test('BuilderCore uses registry state for command-only world undo diffs', async () => {
     const world = new CommandOnlyWorld();
     const store = createMemoryStore();

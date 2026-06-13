@@ -183,7 +183,8 @@ export function truncCommandMessage(message) {
 }
 
 export function isAction(name) {
-    return actionsList.find(action => action.name === name) !== undefined;
+    return actionsList.find(action => action.name === name) !== undefined
+        || builderActionsList.find(action => action.name === name) !== undefined;
 }
 
 /**

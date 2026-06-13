@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { commandExists, executeCommand, getCommand } from '../../../src/agent/commands/index.js';
+import { commandExists, executeCommand, getCommand, isAction } from '../../../src/agent/commands/index.js';
 
 const builderCommands = ['!build', '!buildEdit', '!buildUndo', '!buildRedo', '!buildStatus'];
 
@@ -11,6 +11,12 @@ test('builder commands are registered by name', () => {
     for (const command of builderCommands) {
         assert.equal(commandExists(command), true);
         assert.equal(getCommand(command).name, command);
+    }
+});
+
+test('builder commands are classified as actions', () => {
+    for (const command of builderCommands) {
+        assert.equal(isAction(command), true);
     }
 });
 
