@@ -1,5 +1,7 @@
 import { normalizeBlock, normalizePos, posKey, sortBlockStates } from './block_state.js';
 
+let nextEditId = 1;
+
 function uniqueChanges(changes) {
     const byPos = new Map();
     for (const change of changes) {
@@ -11,6 +13,10 @@ function uniqueChanges(changes) {
     return sortBlockStates(Array.from(byPos.values()));
 }
 
+function createEditId() {
+    return `edit_${nextEditId++}`;
+}
+
 export function createDiff(world, changes, metadata = {}) {
     const after = uniqueChanges(changes);
     const before = after.map((change) => ({
@@ -19,7 +25,7 @@ export function createDiff(world, changes, metadata = {}) {
     }));
 
     return {
-        editId: metadata.editId || `edit_${Date.now()}`,
+        editId: metadata.editId || createEditId(),
         summary: metadata.summary || 'builder edit',
         targetPartIds: metadata.targetPartIds || [],
         before,

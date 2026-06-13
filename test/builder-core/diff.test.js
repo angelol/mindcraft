@@ -36,6 +36,24 @@ test('createDiff records before and after block states', () => {
     });
 });
 
+test('createDiff generates distinct default edit ids in the same millisecond', () => {
+    const world = new FakeWorld();
+    const originalNow = Date.now;
+    Date.now = () => 12345;
+
+    try {
+        const diffs = [
+            createDiff(world, [{ pos: [0, 0, 0], block: 'stone' }]),
+            createDiff(world, [{ pos: [1, 0, 0], block: 'glass' }]),
+            createDiff(world, [{ pos: [2, 0, 0], block: 'oak_planks' }]),
+        ];
+
+        assert.equal(new Set(diffs.map((diff) => diff.editId)).size, diffs.length);
+    } finally {
+        Date.now = originalNow;
+    }
+});
+
 test('applyDiff changes world blocks and invertDiff restores them', () => {
     const world = new FakeWorld([{ pos: [0, 0, 0], block: 'dirt' }]);
     const diff = createDiff(world, [
