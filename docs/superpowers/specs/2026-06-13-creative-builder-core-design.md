@@ -435,6 +435,12 @@ Exit criteria:
 - If command execution leaves missing blocks, verification reports and retries them once.
 - Tests cover fake-world scanning, reconciliation, drift reporting, verification success, verification failure, and repair.
 
+Implementation note after Phase 2:
+
+- Real-server scanning is based on Mineflayer loaded-block reads through `bot.blockAt()`.
+- Fake-world tests cover scan, reconciliation, verification, retry, repair, and drift status.
+- This phase does not infer semantic meaning for unregistered user-built structures; unexpected blocks are reported as drift only.
+
 ### Phase 3: Creative Geometry
 
 Goal: let the agent express creative, granular design intent without emitting raw Minecraft commands as the primary artifact. Phase 3 introduces structured design specs and a constrained geometry DSL that compile to validated voxel plans.

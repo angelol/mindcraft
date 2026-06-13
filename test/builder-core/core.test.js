@@ -448,3 +448,35 @@ test('BuilderCore scan reports registry drift after manual world edits', async (
         unexpected: 1,
     });
 });
+
+test('BuilderCore scans repairs verifies and preserves undo across drift', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 3x1x1');
+    world.setBlock([1, 0, 0], 'air');
+
+    const scan = await core.scan();
+    assert.equal(scan.ok, false);
+    assert.deepEqual(scan.drift.summary, {
+        missing: 1,
+        changed: 0,
+        unexpected: 0,
+    });
+
+    const repair = await core.repair('repair this');
+    assert.equal(repair.ok, true);
+    assert.equal(world.getBlock([1, 0, 0]), 'stone');
+
+    const status = await core.status();
+    assert.equal(status.lastScan.drift.ok, true);
+
+    const undo = await core.undo();
+    assert.equal(undo.ok, true);
+    assert.equal(world.getBlock([1, 0, 0]), 'air');
+
+    const postUndoScan = await core.scan();
+    assert.equal(postUndoScan.ok, false);
+    assert.equal(postUndoScan.drift.summary.missing, 1);
+});
