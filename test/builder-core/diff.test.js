@@ -1,116 +1,130 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDiff, invertDiff, applyDiff } from '../../src/builder-core/diff.js';
+import { createDiff, applyDiff, invertDiff } from '../../src/builder-core/diff.js';
 import { FakeWorld } from '../../src/builder-core/world_adapters/fake_world.js';
 
-test('createDiff ignores unchanged blocks and normalizes air', () => {
-    const diff = createDiff({
-        reason: 'replace wall blocks',
-        before: [
-            { pos: [0, 0, 0], block: 'stone' },
-            { pos: [1, 0, 0], block: null },
-            { pos: [2, 0, 0], block: 'glass' },
-            { pos: [3, 0, 0], block: 'oak_planks' },
-        ],
-        after: [
-            { pos: [0, 0, 0], block: 'stone' },
-            { pos: [1, 0, 0], block: '' },
-            { pos: [2, 0, 0], block: undefined },
-            { pos: [3, 0, 0], block: ' oak_planks ' },
-        ],
-    });
-
-    assert.ok(diff.id);
-    assert.equal(diff.reason, 'replace wall blocks');
-    assert.deepEqual(diff.changes, [
-        { pos: [2, 0, 0], before: 'glass', after: 'air' },
-    ]);
-});
-
-test('applyDiff mutates FakeWorld as expected', () => {
+test('createDiff records before and after block states', () => {
     const world = new FakeWorld([
-        { pos: [0, 0, 0], block: 'stone' },
-        { pos: [1, 0, 0], block: 'dirt' },
+        { pos: [0, 0, 0], block: 'dirt' },
+        { pos: [1, 0, 0], block: 'oak_planks' },
     ]);
-    const diff = createDiff({
-        reason: 'apply wall edit',
-        before: world.getAllBlocks(),
-        after: [
-            { pos: [0, 0, 0], block: 'stone_bricks' },
-            { pos: [2, 0, 0], block: 'glass' },
-        ],
-    });
 
-    const applied = applyDiff(world, diff);
-
-    assert.deepEqual(applied, diff.changes);
-    assert.deepEqual(world.getAllBlocks(), [
-        { pos: [0, 0, 0], block: 'stone_bricks' },
+    const diff = createDiff(world, [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'air' },
         { pos: [2, 0, 0], block: 'glass' },
-    ]);
-});
+    ], {
+        editId: 'edit_001',
+        summary: 'replace test blocks',
+        targetPartIds: ['part_001'],
+    });
 
-test('invertDiff can undo an applied diff', () => {
-    const world = new FakeWorld([
-        { pos: [0, 0, 0], block: 'stone' },
-        { pos: [1, 0, 0], block: 'dirt' },
-    ]);
-    const originalBlocks = world.getAllBlocks();
-    const diff = createDiff({
-        reason: 'replace floor',
-        before: originalBlocks,
+    assert.deepEqual(diff, {
+        editId: 'edit_001',
+        summary: 'replace test blocks',
+        targetPartIds: ['part_001'],
+        before: [
+            { pos: [0, 0, 0], block: 'dirt' },
+            { pos: [1, 0, 0], block: 'oak_planks' },
+            { pos: [2, 0, 0], block: 'air' },
+        ],
         after: [
-            { pos: [0, 0, 0], block: 'stone_bricks' },
+            { pos: [0, 0, 0], block: 'stone' },
+            { pos: [1, 0, 0], block: 'air' },
             { pos: [2, 0, 0], block: 'glass' },
         ],
+    });
+});
+
+test('applyDiff changes world blocks and invertDiff restores them', () => {
+    const world = new FakeWorld([{ pos: [0, 0, 0], block: 'dirt' }]);
+    const diff = createDiff(world, [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'glass' },
+    ], {
+        editId: 'edit_002',
+        summary: 'apply test',
     });
 
     applyDiff(world, diff);
-    const undoDiff = invertDiff(diff);
-    const undone = applyDiff(world, undoDiff);
 
-    assert.equal(undoDiff.reason, 'undo');
-    assert.deepEqual(undone, undoDiff.changes);
-    assert.deepEqual(world.getAllBlocks(), originalBlocks);
+    assert.deepEqual(world.getAllBlocks(), [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'glass' },
+    ]);
+
+    applyDiff(world, invertDiff(diff));
+
+    assert.deepEqual(world.getAllBlocks(), [
+        { pos: [0, 0, 0], block: 'dirt' },
+    ]);
 });
 
-test('change order is deterministic', () => {
-    const first = createDiff({
-        reason: 'ordered edit',
-        before: [
-            { pos: [10, 0, 0], block: 'stone' },
-            { pos: [2, 0, 0], block: 'stone' },
-            { pos: [1, 0, 0], block: 'stone' },
-        ],
-        after: [
-            { pos: [1, 0, 0], block: 'glass' },
-            { pos: [10, 0, 0], block: 'glass' },
-            { pos: [2, 0, 0], block: 'glass' },
-        ],
-    });
-    const second = createDiff({
-        reason: 'ordered edit',
-        before: [
-            { pos: [1, 0, 0], block: 'stone' },
-            { pos: [10, 0, 0], block: 'stone' },
-            { pos: [2, 0, 0], block: 'stone' },
-        ],
-        after: [
-            { pos: [2, 0, 0], block: 'glass' },
-            { pos: [1, 0, 0], block: 'glass' },
-            { pos: [10, 0, 0], block: 'glass' },
-        ],
+test('createDiff collapses duplicate positions and normalizes air', () => {
+    const world = new FakeWorld([
+        { pos: [0, 0, 0], block: 'dirt' },
+        { pos: [1, 0, 0], block: 'stone' },
+    ]);
+
+    const diff = createDiff(world, [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: ['0', 0.9, 0], block: 'glass' },
+        { pos: [1, 0, 0], block: '   ' },
+    ], {
+        editId: 'edit_003',
     });
 
-    assert.deepEqual(first.changes.map((change) => change.pos), [
+    assert.deepEqual(diff.before, [
+        { pos: [0, 0, 0], block: 'dirt' },
+        { pos: [1, 0, 0], block: 'stone' },
+    ]);
+    assert.deepEqual(diff.after, [
+        { pos: [0, 0, 0], block: 'glass' },
+        { pos: [1, 0, 0], block: 'air' },
+    ]);
+});
+
+test('createDiff sorts unique target changes deterministically', () => {
+    const world = new FakeWorld();
+    const first = createDiff(world, [
+        { pos: [10, 0, 0], block: 'stone' },
+        { pos: [2, 0, 0], block: 'glass' },
+        { pos: [1, 0, 0], block: 'oak_planks' },
+    ], {
+        editId: 'edit_004',
+    });
+    const second = createDiff(world, [
+        { pos: [1, 0, 0], block: 'oak_planks' },
+        { pos: [10, 0, 0], block: 'stone' },
+        { pos: [2, 0, 0], block: 'glass' },
+    ], {
+        editId: 'edit_004',
+    });
+
+    assert.deepEqual(first.after.map((state) => state.pos), [
         [1, 0, 0],
         [10, 0, 0],
         [2, 0, 0],
     ]);
-    assert.deepEqual(second.changes, first.changes);
-    assert.deepEqual(invertDiff(first).changes.map((change) => change.pos), [
-        [1, 0, 0],
-        [10, 0, 0],
-        [2, 0, 0],
+    assert.deepEqual(second, first);
+});
+
+test('applyDiff applies a selected side and rejects invalid sides', () => {
+    const world = new FakeWorld([{ pos: [0, 0, 0], block: 'dirt' }]);
+    const diff = createDiff(world, [
+        { pos: [0, 0, 0], block: 'stone' },
+    ], {
+        editId: 'edit_005',
+    });
+
+    applyDiff(world, diff);
+    applyDiff(world, diff, 'before');
+
+    assert.deepEqual(world.getAllBlocks(), [
+        { pos: [0, 0, 0], block: 'dirt' },
     ]);
+    assert.throws(
+        () => applyDiff(world, diff, 'missing'),
+        /Diff side "missing" is not an array\./,
+    );
 });
