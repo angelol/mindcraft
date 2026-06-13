@@ -658,6 +658,7 @@ export class BuilderCore {
             activeSelection: project?.activeSelection || null,
             editCount: project?.edits.length || 0,
             redoCount: project?.redo.length || 0,
+            lastScan: project?.lastScan || null,
         };
     }
 }

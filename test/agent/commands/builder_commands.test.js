@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { commandExists, executeCommand, getCommand, isAction } from '../../../src/agent/commands/index.js';
 
-const builderCommands = ['!build', '!buildEdit', '!buildUndo', '!buildRedo', '!buildStatus'];
+const builderCommands = ['!build', '!buildEdit', '!buildUndo', '!buildRedo', '!buildScan', '!buildRepair', '!buildStatus'];
 
 test('builder commands are registered by name', () => {
     for (const command of builderCommands) {

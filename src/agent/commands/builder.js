@@ -6,12 +6,19 @@ function formatStatus(status) {
     }
 
     const selection = status.activeSelection?.partIds?.join(', ') || 'none';
-    return [
+    const lines = [
         `Active builder project: ${status.activeProjectId}`,
         `Active selection: ${selection}`,
         `Undo edits: ${status.editCount}`,
         `Redo edits: ${status.redoCount}`,
-    ].join('\n');
+    ];
+
+    if (status.lastScan?.drift?.summary) {
+        const summary = status.lastScan.drift.summary;
+        lines.push(`World drift: ${summary.missing} missing, ${summary.changed} changed, ${summary.unexpected} unexpected.`);
+    }
+
+    return lines.join('\n');
 }
 
 export const builderActionsList = [
@@ -50,6 +57,25 @@ export const builderActionsList = [
         description: 'Redo the most recently undone builder edit.',
         perform: async function(agent) {
             const result = await getBuilderForAgent(agent).redo();
+            return result.message;
+        },
+    },
+    {
+        name: '!buildScan',
+        description: 'Scan the active builder project and report registry/world drift.',
+        perform: async function(agent) {
+            const result = await getBuilderForAgent(agent).scan();
+            return result.message;
+        },
+    },
+    {
+        name: '!buildRepair',
+        description: 'Repair damaged registered blocks in the active builder project or active selection.',
+        params: {
+            request: { type: 'string', description: 'The repair request.' },
+        },
+        perform: async function(agent, request = 'repair this') {
+            const result = await getBuilderForAgent(agent).repair(request);
             return result.message;
         },
     },
