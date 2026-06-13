@@ -180,6 +180,10 @@ function createProjectStateWorld(project) {
 }
 
 function updateProjectBlockStates(project, diff, side = 'after') {
+    if (diff.registryStateMode === 'preserve') {
+        return;
+    }
+
     project.blockStates = applyBlockStates(project.blockStates || [], diff[side]);
 }
 
@@ -481,6 +485,7 @@ export class BuilderCore {
 
         const diff = project.edits[project.edits.length - 1];
         const undoDiff = invertDiff(diff);
+        undoDiff.registryStateMode = diff.registryStateMode;
         const commands = diffToCommands(undoDiff);
         const execution = await executeAndRecord(
             this.world,
@@ -617,6 +622,7 @@ export class BuilderCore {
         });
         diff.projectBefore = snapshotProjectMetadata(project);
         diff.projectAfter = snapshotProjectMetadata(project);
+        diff.registryStateMode = 'preserve';
         const commands = diffToCommands(diff);
         const execution = await executeAndRecord(
             this.world,

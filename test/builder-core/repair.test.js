@@ -69,7 +69,7 @@ test('repair reports clean state when no registered drift exists', async () => {
     assert.deepEqual(repair.commands, []);
 });
 
-test('undoing and redoing repair preserves semantic part metadata', async () => {
+test('undoing and redoing repair preserves registered block state and metadata', async () => {
     const world = new FakeWorld();
     const store = createMemoryStore();
     const core = new BuilderCore({ store, world });
@@ -91,7 +91,8 @@ test('undoing and redoing repair preserves semantic part metadata', async () => 
     let project = registry.projects.project_001;
     assert.deepEqual(project.blockStates, [
         { pos: [0, 0, 0], block: 'stone' },
-        { pos: [2, 0, 0], block: 'oak_planks' },
+        { pos: [1, 0, 0], block: 'stone' },
+        { pos: [2, 0, 0], block: 'stone' },
     ]);
     assert.equal(project.parts.main_structure.material, 'stone');
     assert.deepEqual(project.parts.main_structure.blockPositions, [
@@ -102,6 +103,15 @@ test('undoing and redoing repair preserves semantic part metadata', async () => 
     assert.deepEqual(project.activeSelection, {
         targetId: 'main_structure',
         partIds: ['main_structure'],
+    });
+
+    const scan = await core.scan();
+
+    assert.equal(scan.ok, false);
+    assert.deepEqual(scan.drift.summary, {
+        missing: 1,
+        changed: 1,
+        unexpected: 0,
     });
 
     const redo = await core.redo();
@@ -130,6 +140,26 @@ test('undoing and redoing repair preserves semantic part metadata', async () => 
         targetId: 'main_structure',
         partIds: ['main_structure'],
     });
+
+    await core.undo();
+    const repairAgain = await core.repair('repair this again');
+
+    assert.equal(repairAgain.ok, true);
+    assert.equal(repairAgain.message, 'Repaired 2 registered blocks.');
+    assert.deepEqual(world.getAllBlocks(), [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'stone' },
+        { pos: [2, 0, 0], block: 'stone' },
+    ]);
+
+    registry = await store.load();
+    project = registry.projects.project_001;
+    assert.deepEqual(project.blockStates, [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'stone' },
+        { pos: [2, 0, 0], block: 'stone' },
+    ]);
+    assert.equal(project.parts.main_structure.material, 'stone');
 });
 
 test('failed repair verification does not persist a successful repair edit', async () => {
