@@ -163,3 +163,49 @@ test('getBuilderForAgent caches builders and writes the agent registry path', as
         await rm(tempDir, { recursive: true, force: true });
     }
 });
+
+test('getBuilderForAgent builds at the bot position instead of world origin', async () => {
+    const previousCwd = process.cwd();
+    const tempDir = await mkdtemp(join(tmpdir(), 'mindcraft-builder-origin-'));
+    const sent = [];
+    const blocks = new Map();
+    const agent = {
+        name: 'positioned_builder_agent',
+        bot: {
+            entity: {
+                position: { x: 10.6, y: 70, z: -3.2 },
+            },
+            blockAt(pos) {
+                return blocks.get(`${pos.x},${pos.y},${pos.z}`) || null;
+            },
+            chat(command) {
+                sent.push(command);
+                blocks.set('10,70,-4', { name: 'stone' });
+                blocks.set('11,70,-4', { name: 'stone' });
+            },
+        },
+    };
+
+    try {
+        process.chdir(tempDir);
+        const builder = getBuilderForAgent(agent);
+
+        const result = await builder.build('build a stone house 2x1x1');
+
+        assert.equal(result.ok, true);
+        assert.deepEqual(sent, [
+            '/fill 10 70 -4 11 70 -4 stone',
+        ]);
+
+        const registryPath = join(tempDir, 'bots', agent.name, 'builder-registry.json');
+        const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+        assert.deepEqual(registry.projects.project_001.origin, [10, 70, -4]);
+        assert.deepEqual(registry.projects.project_001.bounds, {
+            min: [10, 70, -4],
+            max: [11, 70, -4],
+        });
+    } finally {
+        process.chdir(previousCwd);
+        await rm(tempDir, { recursive: true, force: true });
+    }
+});

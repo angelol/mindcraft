@@ -32,7 +32,15 @@ export class History {
 
     async summarizeMemories(turns) {
         console.log("Storing memories...");
-        this.memory = await this.agent.prompter.promptMemSaving(turns);
+        let nextMemory = '';
+        try {
+            nextMemory = await this.agent.prompter.promptMemSaving(turns);
+        } catch (error) {
+            console.error('Failed to summarize memories:', error);
+            return;
+        }
+
+        this.memory = nextMemory;
 
         if (this.memory.length > 500) {
             this.memory = this.memory.slice(0, 500);

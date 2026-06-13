@@ -51,28 +51,30 @@ function isResizeRequest(request) {
     return /\b(resize|bigger|larger|smaller|shrink|wider)\b/i.test(String(request));
 }
 
-function createRectBlocks({ width, height, depth, material }) {
+function createRectBlocks({ width, height, depth, material, origin = [0, 0, 0] }) {
     const blocks = [];
+    const [originX, originY, originZ] = normalizePos(origin);
     for (let z = 0; z < depth; z++) {
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-                blocks.push({ pos: [x, y, z], block: material });
+                blocks.push({ pos: [originX + x, originY + y, originZ + z], block: material });
             }
         }
     }
     return blocks;
 }
 
-function createProject({ id, name, dimensions, material, blocks }) {
+function createProject({ id, name, dimensions, material, blocks, origin = [0, 0, 0] }) {
     const blockPositions = blocks.map((block) => normalizePos(block.pos));
+    const [originX, originY, originZ] = normalizePos(origin);
 
     return {
         id,
         name,
-        origin: [0, 0, 0],
+        origin: [originX, originY, originZ],
         bounds: {
-            min: [0, 0, 0],
-            max: [dimensions.width - 1, dimensions.height - 1, dimensions.depth - 1],
+            min: [originX, originY, originZ],
+            max: [originX + dimensions.width - 1, originY + dimensions.height - 1, originZ + dimensions.depth - 1],
         },
         activeSelection: {
             targetId: 'main_structure',
@@ -276,9 +278,17 @@ function createExecutionFailure(message, commands, execution) {
 }
 
 export class BuilderCore {
-    constructor({ store, world }) {
+    constructor({ store, world, originProvider = null }) {
         this.store = store;
         this.world = world;
+        this.originProvider = originProvider;
+    }
+
+    getBuildOrigin() {
+        if (typeof this.originProvider !== 'function') {
+            return [0, 0, 0];
+        }
+        return normalizePos(this.originProvider());
     }
 
     async build(request) {
@@ -293,7 +303,8 @@ export class BuilderCore {
 
         const dimensions = parseDimensions(request);
         const material = parseMaterial(request);
-        const blocks = createRectBlocks({ ...dimensions, material });
+        const origin = this.getBuildOrigin();
+        const blocks = createRectBlocks({ ...dimensions, material, origin });
         const projectId = 'project_001';
         const project = createProject({
             id: projectId,
@@ -301,6 +312,7 @@ export class BuilderCore {
             dimensions,
             material,
             blocks,
+            origin,
         });
         const diff = createDiff(createProjectStateWorld({ blockStates: [] }), blocks, {
             editId: 'edit_001',
@@ -446,7 +458,7 @@ export class BuilderCore {
         const projectBefore = snapshotProjectMetadata(project);
         const dimensions = parseDimensions(request);
         const material = normalizeBlock(mainStructure.material || 'stone');
-        const nextBlocks = createRectBlocks({ ...dimensions, material });
+        const nextBlocks = createRectBlocks({ ...dimensions, material, origin: project.origin });
         const oldPositions = new Set((mainStructure.blockPositions || []).map((pos) => posKey(pos)));
         const nextPositions = new Set(nextBlocks.map((block) => posKey(block.pos)));
         const removals = (mainStructure.blockPositions || [])
@@ -472,8 +484,12 @@ export class BuilderCore {
 
         updateProjectBlockStates(project, diff);
         project.bounds = {
-            min: [0, 0, 0],
-            max: [dimensions.width - 1, dimensions.height - 1, dimensions.depth - 1],
+            min: normalizePos(project.origin),
+            max: [
+                project.origin[0] + dimensions.width - 1,
+                project.origin[1] + dimensions.height - 1,
+                project.origin[2] + dimensions.depth - 1,
+            ],
         };
         mainStructure.blockPositions = nextBlocks.map((block) => normalizePos(block.pos));
         project.activeSelection = {
