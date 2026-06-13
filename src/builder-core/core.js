@@ -1,6 +1,9 @@
 import { diffToCommands } from './command_optimizer.js';
 import { applyDiff, createDiff, invertDiff } from './diff.js';
 import { normalizeBlock, normalizePos, posKey, sortBlockStates } from './block_state.js';
+import { expandBounds } from './bounds.js';
+import { reconcileBlockStates, formatDriftSummary } from './reconciliation.js';
+import { scanVolume } from './scanner.js';
 
 const DEFAULT_DIMENSIONS = { width: 5, height: 4, depth: 5 };
 const KNOWN_BLOCKS = [
@@ -94,6 +97,13 @@ function getActiveProject(registry) {
         return null;
     }
     return registry.projects[registry.activeProjectId] || null;
+}
+
+function getProjectScanBounds(project) {
+    if (!project?.bounds) {
+        return null;
+    }
+    return expandBounds(project.bounds, 1);
 }
 
 function getActivePart(project) {
@@ -428,6 +438,39 @@ export class BuilderCore {
         await this.store.save(registry);
 
         return { ok: true, message: `Redid ${diff.summary}.`, commands };
+    }
+
+    async scan() {
+        const registry = await this.store.load();
+        const project = getActiveProject(registry);
+        if (!project) {
+            return {
+                ok: false,
+                message: 'No active build project.',
+                drift: null,
+            };
+        }
+
+        const bounds = getProjectScanBounds(project);
+        const scan = await scanVolume(this.world, bounds);
+        const drift = reconcileBlockStates({
+            expected: project.blockStates || [],
+            actual: scan.blocks,
+        });
+
+        project.lastScan = {
+            scannedAt: new Date().toISOString(),
+            bounds: scan.bounds,
+            drift,
+        };
+        await this.store.save(registry);
+
+        return {
+            ok: drift.ok,
+            message: formatDriftSummary(drift),
+            drift,
+            scan,
+        };
     }
 
     async status() {

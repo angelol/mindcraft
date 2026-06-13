@@ -346,3 +346,29 @@ test('BuilderCore window and resize undo diffs come from registry state in comma
         '/setblock 4 2 0 air',
     ]);
 });
+
+test('BuilderCore scan reports registry drift after manual world edits', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 2x1x1');
+    world.setBlock([0, 0, 0], 'air');
+    world.setBlock([1, 0, 0], 'oak_planks');
+    world.setBlock([2, 0, 0], 'dirt');
+
+    const result = await core.scan();
+
+    assert.equal(result.ok, false);
+    assert.equal(result.drift.summary.missing, 1);
+    assert.equal(result.drift.summary.changed, 1);
+    assert.equal(result.drift.summary.unexpected, 1);
+    assert.equal(result.message, 'World drift: 1 missing, 1 changed, 1 unexpected.');
+
+    const registry = await store.load();
+    assert.deepEqual(registry.projects.project_001.lastScan.drift.summary, {
+        missing: 1,
+        changed: 1,
+        unexpected: 1,
+    });
+});
