@@ -94,6 +94,7 @@ Do not let Phase 1 expand into the full creative geometry system. Rich primitive
 ## Development Guidance
 
 - Keep changes scoped. This codebase has several large, stateful modules; avoid broad refactors unless directly needed.
+- Commit changes at the end of each turn whenever you modify files. Keep commits focused and leave the working tree clean so work can resume safely.
 - Prefer adding focused modules for builder-core work instead of embedding more responsibilities into `src/agent/agent.js` or `src/agent/commands/actions.js`.
 - For new builder work, use tests around pure builder-core modules first. Use a fake world adapter before requiring a live Minecraft server.
 - Preserve user and generated local state under `bots/` unless the task explicitly asks to clean it.
