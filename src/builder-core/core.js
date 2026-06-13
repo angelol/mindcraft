@@ -39,7 +39,7 @@ function parseMaterial(request, fallback = 'stone') {
 }
 
 function isWindowRequest(request) {
-    return /\bwindow\b/i.test(String(request));
+    return /\bwindows?\b/i.test(String(request));
 }
 
 function isResizeRequest(request) {
@@ -182,6 +182,24 @@ function hasPosition(positions, pos) {
     return positions.has(posKey(pos));
 }
 
+function snapshotProjectMetadata(project) {
+    return structuredClone({
+        bounds: project.bounds,
+        activeSelection: project.activeSelection,
+        parts: project.parts,
+    });
+}
+
+function applyProjectMetadataSnapshot(project, snapshot) {
+    if (!snapshot) {
+        return;
+    }
+
+    project.bounds = structuredClone(snapshot.bounds);
+    project.activeSelection = structuredClone(snapshot.activeSelection);
+    project.parts = structuredClone(snapshot.parts);
+}
+
 export class BuilderCore {
     constructor({ store, world }) {
         this.store = store;
@@ -268,6 +286,7 @@ export class BuilderCore {
     }
 
     async addWindowRow(registry, project) {
+        const projectBefore = snapshotProjectMetadata(project);
         const bounds = project.bounds;
         const y = Math.min(bounds.max[1], bounds.min[1] + 2);
         const z = bounds.min[2];
@@ -298,6 +317,8 @@ export class BuilderCore {
             targetId: 'window_row_001',
             partIds: ['window_row_001'],
         };
+        diff.projectBefore = projectBefore;
+        diff.projectAfter = snapshotProjectMetadata(project);
         project.edits.push(diff);
         project.redo = [];
         await this.store.save(registry);
@@ -315,6 +336,7 @@ export class BuilderCore {
             return { ok: false, message: 'No main structure to resize.', commands: [] };
         }
 
+        const projectBefore = snapshotProjectMetadata(project);
         const dimensions = parseDimensions(request);
         const material = normalizeBlock(mainStructure.material || 'stone');
         const nextBlocks = createRectBlocks({ ...dimensions, material });
@@ -344,6 +366,8 @@ export class BuilderCore {
             targetId: 'main_structure',
             partIds: ['main_structure'],
         };
+        diff.projectBefore = projectBefore;
+        diff.projectAfter = snapshotProjectMetadata(project);
         project.edits.push(diff);
         project.redo = [];
         await this.store.save(registry);
@@ -370,6 +394,7 @@ export class BuilderCore {
         executeCommands(this.world, commands);
         updateProjectBlockStates(project, undoDiff);
         updateTargetPartMaterials(project, diff, 'before');
+        applyProjectMetadataSnapshot(project, diff.projectBefore);
         project.redo.push(diff);
         await this.store.save(registry);
 
@@ -390,6 +415,7 @@ export class BuilderCore {
         executeCommands(this.world, commands);
         updateProjectBlockStates(project, diff);
         updateTargetPartMaterials(project, diff);
+        applyProjectMetadataSnapshot(project, diff.projectAfter);
         project.edits.push(diff);
         await this.store.save(registry);
 

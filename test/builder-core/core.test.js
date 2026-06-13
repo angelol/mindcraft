@@ -152,7 +152,7 @@ test('BuilderCore adds a simple rectangular window row to active structure', asy
     const core = new BuilderCore({ store, world });
 
     await core.build('build a stone house 5x4x3');
-    const edit = await core.edit('add a window row on the front');
+    const edit = await core.edit('add windows');
 
     assert.equal(edit.ok, true);
     assert.match(edit.message, /Added window row/);
@@ -182,6 +182,52 @@ test('BuilderCore adds a simple rectangular window row to active structure', asy
         partIds: ['window_row_001'],
     });
     assert.deepEqual(project.redo, []);
+});
+
+test('BuilderCore restores window metadata across undo and redo', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 5x4x3');
+    await core.edit('add windows');
+    await core.undo();
+
+    let registry = await store.load();
+    let project = registry.projects.project_001;
+    assert.equal(project.parts.window_row_001, undefined);
+    assert.deepEqual(project.activeSelection, {
+        targetId: 'main_structure',
+        partIds: ['main_structure'],
+    });
+    assert.equal(project.blockStates.find((state) => state.block === 'glass_pane'), undefined);
+
+    await core.redo();
+
+    registry = await store.load();
+    project = registry.projects.project_001;
+    assert.deepEqual(project.parts.window_row_001, {
+        id: 'window_row_001',
+        type: 'window_row',
+        material: 'glass_pane',
+        blockPositions: [
+            [1, 2, 0],
+            [2, 2, 0],
+            [3, 2, 0],
+        ],
+    });
+    assert.deepEqual(project.activeSelection, {
+        targetId: 'window_row_001',
+        partIds: ['window_row_001'],
+    });
+    assert.deepEqual(
+        project.blockStates.filter((state) => state.block === 'glass_pane').map((state) => state.pos),
+        [
+            [1, 2, 0],
+            [2, 2, 0],
+            [3, 2, 0],
+        ],
+    );
 });
 
 test('BuilderCore resizes the simple rectangular structure', async () => {
@@ -217,6 +263,42 @@ test('BuilderCore resizes the simple rectangular structure', async () => {
     });
     assert.deepEqual(project.blockStates, world.getAllBlocks());
     assert.deepEqual(project.redo, []);
+});
+
+test('BuilderCore restores resize metadata across undo and redo', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 2x2x1');
+    await core.edit('make it bigger 3x2x2');
+    await core.undo();
+
+    let registry = await store.load();
+    let project = registry.projects.project_001;
+    assert.deepEqual(project.bounds, {
+        min: [0, 0, 0],
+        max: [1, 1, 0],
+    });
+    assert.equal(project.parts.main_structure.blockPositions.length, 4);
+    assert.deepEqual(project.activeSelection, {
+        targetId: 'main_structure',
+        partIds: ['main_structure'],
+    });
+
+    await core.redo();
+
+    registry = await store.load();
+    project = registry.projects.project_001;
+    assert.deepEqual(project.bounds, {
+        min: [0, 0, 0],
+        max: [2, 1, 1],
+    });
+    assert.equal(project.parts.main_structure.blockPositions.length, 12);
+    assert.deepEqual(project.activeSelection, {
+        targetId: 'main_structure',
+        partIds: ['main_structure'],
+    });
 });
 
 test('BuilderCore window and resize undo diffs come from registry state in command-only worlds', async () => {
