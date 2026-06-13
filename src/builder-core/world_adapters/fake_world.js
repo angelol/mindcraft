@@ -36,6 +36,9 @@ export class FakeWorld {
     }
 
     executeCommands(commands) {
+        if (!Array.isArray(commands)) {
+            throw new Error('Commands must be an array.');
+        }
         this.commands.push(...commands);
     }
 

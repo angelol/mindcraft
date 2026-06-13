@@ -32,3 +32,28 @@ test('FakeWorld can apply many block writes in deterministic order', () => {
         { pos: [1, 0, 0], block: 'oak_planks' },
     ]);
 });
+
+test('FakeWorld treats whitespace-only blocks as air', () => {
+    const world = new FakeWorld();
+
+    world.setBlock([2, 0, 0], 'stone');
+    world.setBlock([2, 0, 0], '   ');
+
+    assert.equal(world.getBlock([2, 0, 0]), 'air');
+    assert.deepEqual(world.getAllBlocks(), []);
+});
+
+test('FakeWorld records command arrays and rejects non-arrays', () => {
+    const world = new FakeWorld();
+
+    world.executeCommands(['/setblock 0 0 0 stone', '/setblock 1 0 0 glass']);
+
+    assert.deepEqual(world.getExecutedCommands(), [
+        '/setblock 0 0 0 stone',
+        '/setblock 1 0 0 glass',
+    ]);
+    assert.throws(
+        () => world.executeCommands('/setblock 2 0 0 oak_planks'),
+        /Commands must be an array\./,
+    );
+});

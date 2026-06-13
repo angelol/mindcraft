@@ -21,10 +21,11 @@ export function parsePosKey(key) {
 }
 
 export function normalizeBlock(block) {
-    if (block === null || block === undefined || block === '') {
+    if (block === null || block === undefined) {
         return 'air';
     }
-    return String(block).trim();
+    const normalized = String(block).trim();
+    return normalized || 'air';
 }
 
 export function sortBlockStates(states) {
