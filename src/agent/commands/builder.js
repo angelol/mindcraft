@@ -71,9 +71,6 @@ export const builderActionsList = [
     {
         name: '!buildRepair',
         description: 'Repair damaged registered blocks in the active builder project or active selection.',
-        params: {
-            request: { type: 'string', description: 'The repair request.' },
-        },
         perform: async function(agent, request = 'repair this') {
             const result = await getBuilderForAgent(agent).repair(request);
             return result.message;

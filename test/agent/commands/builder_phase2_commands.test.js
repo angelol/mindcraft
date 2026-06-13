@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { executeCommand } from '../../../src/agent/commands/index.js';
 import { builderActionsList } from '../../../src/agent/commands/builder.js';
 
 function command(name) {
@@ -104,6 +105,25 @@ test('buildRepair returns repair result message', async () => {
     });
 });
 
+test('buildRepair can execute through parser with no explicit request', async () => {
+    await withTempCwd('mindcraft-builder-repair-parser-command-', async () => {
+        for (const [index, commandText] of ['!buildRepair()', '!buildRepair'].entries()) {
+            const agent = {
+                name: `repair_parser_agent_${index}`,
+                bot: createCommandAwareBot(),
+            };
+
+            const build = command('!build');
+            await build.perform(agent, 'build a stone house 1x1x1');
+
+            const message = await executeCommand(agent, commandText);
+
+            assert.doesNotMatch(message, /given 0 args/);
+            assert.match(message, /Repaired 1 registered blocks|No registered blocks needed repair/);
+        }
+    });
+});
+
 test('buildStatus reports drift from last scan', async () => {
     await withTempCwd('mindcraft-builder-status-drift-command-', async () => {
         const agent = {
@@ -121,5 +141,28 @@ test('buildStatus reports drift from last scan', async () => {
         const message = await status.perform(agent);
 
         assert.match(message, /World drift: 1 missing, 0 changed, 0 unexpected\./);
+    });
+});
+
+test('buildStatus reports clean drift after repair succeeds', async () => {
+    await withTempCwd('mindcraft-builder-status-repair-command-', async () => {
+        const agent = {
+            name: 'status_repair_agent',
+            bot: createCommandAwareBot(),
+        };
+
+        const build = command('!build');
+        const scan = command('!buildScan');
+        const repair = command('!buildRepair');
+        const status = command('!buildStatus');
+        await build.perform(agent, 'build a stone house 1x1x1');
+        agent.bot.setBlock(0, 0, 0, 'air');
+        await scan.perform(agent);
+        await repair.perform(agent, 'repair this');
+
+        const message = await status.perform(agent);
+
+        assert.doesNotMatch(message, /World drift: 1 missing/);
+        assert.match(message, /World drift: 0 missing, 0 changed, 0 unexpected\./);
     });
 });

@@ -638,7 +638,13 @@ export class BuilderCore {
         updateProjectBlockStates(project, diff);
         project.edits.push(diff);
         project.redo = [];
-        project.lastScan = lastScan;
+        project.lastScan = execution.verification?.drift
+            ? {
+                scannedAt: new Date().toISOString(),
+                bounds: execution.verification.scan.bounds,
+                drift: execution.verification.drift,
+            }
+            : null;
         await this.store.save(registry);
 
         return {
