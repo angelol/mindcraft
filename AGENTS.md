@@ -40,6 +40,7 @@ That process boundary matters. If an agent crashes or restarts, the parent MindS
 ## Common Commands
 
 - Install: `npm install`
+- Set up a fresh worktree: `make setup`
 - Run app: `npm start` or `node main.js`
 - Run a task: `node main.js --task_path tasks/basic/single_agent.json --task_id gather_oak_logs`
 - Run tests for new code: `npm test -- <test files>`
@@ -96,6 +97,7 @@ Do not let Phase 1 expand into the full creative geometry system. Rich primitive
 
 - Keep changes scoped. This codebase has several large, stateful modules; avoid broad refactors unless directly needed.
 - Commit changes at the end of each turn whenever you modify files. Keep commits focused and leave the working tree clean so work can resume safely.
+- After creating or switching into a new worktree, run `make setup` before tests or app startup. It infers the main workspace dynamically from Git, copies local config/secrets when needed, writes `.nvmrc`, uses Node 22.22.2 through nvm when available, installs dependencies, and reapplies package patches.
 - Prefer adding focused modules for builder-core work instead of embedding more responsibilities into `src/agent/agent.js` or `src/agent/commands/actions.js`.
 - For new builder work, use tests around pure builder-core modules first. Use a fake world adapter before requiring a live Minecraft server.
 - Preserve user and generated local state under `bots/` unless the task explicitly asks to clean it.
