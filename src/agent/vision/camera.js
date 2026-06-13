@@ -10,6 +10,7 @@ import { EventEmitter } from 'events';
 
 import worker_threads from 'worker_threads';
 global.Worker = worker_threads.Worker;
+global.THREE = THREE;
 
 
 export class Camera extends EventEmitter {
