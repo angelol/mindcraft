@@ -38,6 +38,14 @@ function parseMaterial(request, fallback = 'stone') {
     return material || fallback;
 }
 
+function isWindowRequest(request) {
+    return /\bwindow\b/i.test(String(request));
+}
+
+function isResizeRequest(request) {
+    return /\b(resize|bigger|larger|smaller|shrink|wider)\b/i.test(String(request));
+}
+
 function createRectBlocks({ width, height, depth, material }) {
     const blocks = [];
     for (let z = 0; z < depth; z++) {
@@ -170,6 +178,10 @@ function updateTargetPartMaterials(project, diff, side = 'after') {
     }
 }
 
+function hasPosition(positions, pos) {
+    return positions.has(posKey(pos));
+}
+
 export class BuilderCore {
     constructor({ store, world }) {
         this.store = store;
@@ -218,6 +230,14 @@ export class BuilderCore {
             return { ok: false, message: 'No active build project.', commands: [] };
         }
 
+        if (isWindowRequest(request)) {
+            return this.addWindowRow(registry, project);
+        }
+
+        if (isResizeRequest(request)) {
+            return this.resizeStructure(registry, project, request);
+        }
+
         const part = getActivePart(project);
         if (!part) {
             return { ok: false, message: 'No active selection.', commands: [] };
@@ -243,6 +263,94 @@ export class BuilderCore {
         return {
             ok: true,
             message: `Changed active selection to ${material}.`,
+            commands,
+        };
+    }
+
+    async addWindowRow(registry, project) {
+        const bounds = project.bounds;
+        const y = Math.min(bounds.max[1], bounds.min[1] + 2);
+        const z = bounds.min[2];
+        const blockPositions = [];
+
+        for (let x = bounds.min[0] + 1; x < bounds.max[0]; x++) {
+            blockPositions.push([x, y, z]);
+        }
+
+        const changes = blockPositions.map((pos) => ({ pos, block: 'glass_pane' }));
+        const diff = createDiff(createProjectStateWorld(project), changes, {
+            editId: consumeNextEditId(project),
+            summary: 'add window row',
+            targetPartIds: ['window_row_001'],
+        });
+        const commands = diffToCommands(diff);
+
+        applyDiffToWorld(this.world, diff);
+        executeCommands(this.world, commands);
+        updateProjectBlockStates(project, diff);
+        project.parts.window_row_001 = {
+            id: 'window_row_001',
+            type: 'window_row',
+            material: 'glass_pane',
+            blockPositions,
+        };
+        project.activeSelection = {
+            targetId: 'window_row_001',
+            partIds: ['window_row_001'],
+        };
+        project.edits.push(diff);
+        project.redo = [];
+        await this.store.save(registry);
+
+        return {
+            ok: true,
+            message: `Added window row with ${blockPositions.length} blocks.`,
+            commands,
+        };
+    }
+
+    async resizeStructure(registry, project, request) {
+        const mainStructure = project.parts?.main_structure;
+        if (!mainStructure) {
+            return { ok: false, message: 'No main structure to resize.', commands: [] };
+        }
+
+        const dimensions = parseDimensions(request);
+        const material = normalizeBlock(mainStructure.material || 'stone');
+        const nextBlocks = createRectBlocks({ ...dimensions, material });
+        const oldPositions = new Set((mainStructure.blockPositions || []).map((pos) => posKey(pos)));
+        const nextPositions = new Set(nextBlocks.map((block) => posKey(block.pos)));
+        const removals = (mainStructure.blockPositions || [])
+            .filter((pos) => !hasPosition(nextPositions, pos))
+            .map((pos) => ({ pos, block: 'air' }));
+        const additions = nextBlocks.filter((block) => !hasPosition(oldPositions, block.pos));
+        const changes = [...removals, ...additions];
+        const diff = createDiff(createProjectStateWorld(project), changes, {
+            editId: consumeNextEditId(project),
+            summary: 'resize simple structure',
+            targetPartIds: ['main_structure'],
+        });
+        const commands = diffToCommands(diff);
+
+        applyDiffToWorld(this.world, diff);
+        executeCommands(this.world, commands);
+        updateProjectBlockStates(project, diff);
+        project.bounds = {
+            min: [0, 0, 0],
+            max: [dimensions.width - 1, dimensions.height - 1, dimensions.depth - 1],
+        };
+        mainStructure.blockPositions = nextBlocks.map((block) => normalizePos(block.pos));
+        project.activeSelection = {
+            targetId: 'main_structure',
+            partIds: ['main_structure'],
+        };
+        project.edits.push(diff);
+        project.redo = [];
+        await this.store.save(registry);
+
+        return {
+            ok: true,
+            message: `Resized simple structure to ${dimensions.width}x${dimensions.height}x${dimensions.depth}.`,
             commands,
         };
     }

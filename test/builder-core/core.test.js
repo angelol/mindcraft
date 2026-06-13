@@ -145,3 +145,101 @@ test('BuilderCore creates fresh edit ids after undo and clears redo on new edits
     assert.deepEqual(project.edits.map((edit) => edit.editId), ['edit_001', 'edit_003']);
     assert.deepEqual(project.redo, []);
 });
+
+test('BuilderCore adds a simple rectangular window row to active structure', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 5x4x3');
+    const edit = await core.edit('add a window row on the front');
+
+    assert.equal(edit.ok, true);
+    assert.match(edit.message, /Added window row/);
+    assert.deepEqual(edit.commands, [
+        '/fill 1 2 0 3 2 0 glass_pane',
+    ]);
+    assert.equal(world.getBlock([1, 2, 0]), 'glass_pane');
+    assert.equal(world.getBlock([2, 2, 0]), 'glass_pane');
+    assert.equal(world.getBlock([3, 2, 0]), 'glass_pane');
+    assert.equal(world.getBlock([0, 2, 0]), 'stone');
+    assert.equal(world.getBlock([4, 2, 0]), 'stone');
+
+    const registry = await store.load();
+    const project = registry.projects.project_001;
+    assert.deepEqual(project.parts.window_row_001, {
+        id: 'window_row_001',
+        type: 'window_row',
+        material: 'glass_pane',
+        blockPositions: [
+            [1, 2, 0],
+            [2, 2, 0],
+            [3, 2, 0],
+        ],
+    });
+    assert.deepEqual(project.activeSelection, {
+        targetId: 'window_row_001',
+        partIds: ['window_row_001'],
+    });
+    assert.deepEqual(project.redo, []);
+});
+
+test('BuilderCore resizes the simple rectangular structure', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 2x2x1');
+    const edit = await core.edit('make it bigger 3x2x2');
+
+    assert.equal(edit.ok, true);
+    assert.match(edit.message, /Resized simple structure/);
+    assert.equal(world.getBlock([2, 0, 0]), 'stone');
+    assert.equal(world.getBlock([2, 1, 1]), 'stone');
+    assert.deepEqual(edit.commands, [
+        '/fill 0 0 1 2 0 1 stone',
+        '/fill 0 1 1 2 1 1 stone',
+        '/setblock 2 0 0 stone',
+        '/setblock 2 1 0 stone',
+    ]);
+
+    const registry = await store.load();
+    const project = registry.projects.project_001;
+    assert.deepEqual(project.bounds, {
+        min: [0, 0, 0],
+        max: [2, 1, 1],
+    });
+    assert.equal(project.parts.main_structure.material, 'stone');
+    assert.equal(project.parts.main_structure.blockPositions.length, 12);
+    assert.deepEqual(project.activeSelection, {
+        targetId: 'main_structure',
+        partIds: ['main_structure'],
+    });
+    assert.deepEqual(project.blockStates, world.getAllBlocks());
+    assert.deepEqual(project.redo, []);
+});
+
+test('BuilderCore window and resize undo diffs come from registry state in command-only worlds', async () => {
+    const world = new CommandOnlyWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 4x3x1');
+    await core.edit('add a front window');
+    const undoWindow = await core.undo();
+
+    assert.equal(undoWindow.ok, true);
+    assert.deepEqual(undoWindow.commands, [
+        '/fill 1 2 0 2 2 0 stone',
+    ]);
+
+    await core.edit('make it wider 5x3x1');
+    const undoResize = await core.undo();
+
+    assert.equal(undoResize.ok, true);
+    assert.deepEqual(undoResize.commands, [
+        '/setblock 4 0 0 air',
+        '/setblock 4 1 0 air',
+        '/setblock 4 2 0 air',
+    ]);
+});
