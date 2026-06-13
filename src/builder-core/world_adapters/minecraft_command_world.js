@@ -1,6 +1,7 @@
 export class MinecraftCommandWorld {
     constructor(bot) {
         this.bot = bot;
+        this.skipVerification = true;
     }
 
     getBlock() {

@@ -23,10 +23,36 @@ class FlakyWorld extends FakeWorld {
 class CommandOnlyWorld {
     constructor() {
         this.commands = [];
+        this.skipVerification = true;
     }
 
     getBlock() {
         return 'air';
+    }
+
+    executeCommands(commands) {
+        this.commands.push(...commands);
+    }
+}
+
+class ObservableCommandWorld {
+    constructor() {
+        this.blocks = new Map();
+        this.commands = [];
+    }
+
+    getBlock(pos) {
+        return this.blocks.get(pos.join(',')) || 'air';
+    }
+
+    setBlocks(blocks) {
+        for (const block of blocks) {
+            if (block.block === 'air') {
+                this.blocks.delete(block.pos.join(','));
+            } else {
+                this.blocks.set(block.pos.join(','), block.block);
+            }
+        }
     }
 
     executeCommands(commands) {
@@ -49,6 +75,22 @@ test('executeVerifiedDiff succeeds when scanned world matches target blocks', as
     assert.deepEqual(world.getAllBlocks(), [
         { pos: [0, 0, 0], block: 'stone' },
         { pos: [1, 0, 0], block: 'stone' },
+    ]);
+});
+
+test('executeVerifiedDiff verifies getBlock worlds that also execute commands by default', async () => {
+    const world = new ObservableCommandWorld();
+    const diff = createDiff(world, [
+        { pos: [0, 0, 0], block: 'stone' },
+    ], { editId: 'edit_001', summary: 'build block' });
+
+    const result = await executeVerifiedDiff({ world, diff });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.verification.ok, true);
+    assert.equal(result.verification.skipped, false);
+    assert.deepEqual(world.commands, [
+        '/setblock 0 0 0 stone',
     ]);
 });
 

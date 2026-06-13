@@ -19,6 +19,7 @@ function createMemoryStore() {
 class CommandOnlyWorld {
     constructor() {
         this.commands = [];
+        this.skipVerification = true;
     }
 
     getBlock() {
@@ -31,6 +32,18 @@ class CommandOnlyWorld {
 
     getExecutedCommands() {
         return this.commands.slice();
+    }
+}
+
+class DropLastWriteWorld extends FakeWorld {
+    constructor(initialBlocks = []) {
+        super(initialBlocks);
+        this.dropLastWrite = true;
+    }
+
+    setBlocks(blocks) {
+        const appliedBlocks = this.dropLastWrite ? blocks.slice(0, -1) : blocks;
+        super.setBlocks(appliedBlocks);
     }
 }
 
@@ -59,6 +72,22 @@ test('BuilderCore builds a simple rectangular structure and records active selec
     assert.deepEqual(registry.projects.project_001.blockStates, world.getAllBlocks());
 });
 
+test('BuilderCore does not persist failed build verification as a successful project', async () => {
+    const world = new DropLastWriteWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    const result = await core.build('build a stone house 2x1x1');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.verification.ok, false);
+    assert.equal(result.verification.skipped, false);
+
+    const registry = await store.load();
+    assert.equal(registry.activeProjectId, null);
+    assert.deepEqual(registry.projects, {});
+});
+
 test('BuilderCore stores dirty bounds and verification metadata for edits', async () => {
     const world = new FakeWorld();
     const store = createMemoryStore();
@@ -80,6 +109,30 @@ test('BuilderCore stores dirty bounds and verification metadata for edits', asyn
         changed: 0,
         unexpected: 0,
     });
+});
+
+test('BuilderCore does not persist failed edit verification as successful block state', async () => {
+    const world = new DropLastWriteWorld();
+    world.dropLastWrite = false;
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 2x1x1');
+    world.dropLastWrite = true;
+    const edit = await core.edit('change it to oak_planks');
+
+    assert.equal(edit.ok, false);
+    assert.equal(edit.verification.ok, false);
+    assert.equal(edit.verification.skipped, false);
+
+    const registry = await store.load();
+    const project = registry.projects.project_001;
+    assert.deepEqual(project.edits.map((diff) => diff.editId), ['edit_001']);
+    assert.deepEqual(project.blockStates, [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'stone' },
+    ]);
+    assert.equal(project.parts.main_structure.material, 'stone');
 });
 
 test('BuilderCore can replace material on active selection and undo/redo it', async () => {

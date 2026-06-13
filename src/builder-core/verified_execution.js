@@ -11,11 +11,15 @@ function ensureDiffBounds(diff) {
 }
 
 function canObserveWorld(world) {
+    if (world?.skipVerification === true || world?.canVerifyBlocks === false) {
+        return false;
+    }
+
     return Boolean(
         world
         && (
             typeof world.scanVolume === 'function'
-            || (typeof world.getBlock === 'function' && typeof world.executeCommands !== 'function')
+            || typeof world.getBlock === 'function'
         ),
     );
 }
@@ -52,7 +56,7 @@ function executeCommands(world, commands) {
     }
 }
 
-export async function verifyDiff({ world, diff, side = 'after' }) {
+export async function verifyDiff({ world, diff, side = 'after', expectedStates = null }) {
     const bounds = ensureDiffBounds(diff);
     if (!bounds) {
         return createSkippedVerification('empty_diff_bounds');
@@ -63,7 +67,7 @@ export async function verifyDiff({ world, diff, side = 'after' }) {
     }
 
     const scan = await scanVolume(world, bounds);
-    const expected = diff[side];
+    const expected = expectedStates || diff[side];
     const drift = reconcileBlockStates({ expected, actual: scan.blocks });
 
     return {
@@ -75,7 +79,7 @@ export async function verifyDiff({ world, diff, side = 'after' }) {
     };
 }
 
-export async function executeVerifiedDiff({ world, diff, commands = diffToCommands(diff) }) {
+export async function executeVerifiedDiff({ world, diff, commands = diffToCommands(diff), expectedStates = null }) {
     ensureDiffBounds(diff);
 
     if (typeof world?.setBlocks === 'function') {
@@ -83,7 +87,7 @@ export async function executeVerifiedDiff({ world, diff, commands = diffToComman
     }
     executeCommands(world, commands);
 
-    let verification = await verifyDiff({ world, diff });
+    let verification = await verifyDiff({ world, diff, expectedStates });
     const retryStates = verification.drift ? statesToRetry(verification.drift) : [];
     let retryCommands = [];
 
@@ -100,7 +104,7 @@ export async function executeVerifiedDiff({ world, diff, commands = diffToComman
             applyDiff(world, retryDiff);
         }
         executeCommands(world, retryCommands);
-        verification = await verifyDiff({ world, diff });
+        verification = await verifyDiff({ world, diff, expectedStates });
     }
 
     return {

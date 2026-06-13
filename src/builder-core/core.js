@@ -200,13 +200,39 @@ function applyProjectMetadataSnapshot(project, snapshot) {
     project.parts = structuredClone(snapshot.parts);
 }
 
-async function executeAndRecord(world, diff, commands) {
+function containsPos(bounds, pos) {
+    return pos.every((value, index) => value >= bounds.min[index] && value <= bounds.max[index]);
+}
+
+function expectedStatesForDiff(blockStates, diff, side = 'after') {
+    const bounds = diff.bounds || boundsFromStates([...diff.before, ...diff.after]);
+    const expectedStates = applyBlockStates(blockStates || [], diff[side]);
+    if (!bounds) {
+        return expectedStates;
+    }
+    return expectedStates.filter((state) => containsPos(bounds, state.pos));
+}
+
+async function executeAndRecord(world, diff, commands, expectedStates = null) {
     diff.bounds = diff.bounds || boundsFromStates([...diff.before, ...diff.after]);
-    const execution = await executeVerifiedDiff({ world, diff, commands });
+    const execution = await executeVerifiedDiff({ world, diff, commands, expectedStates });
     diff.commands = commands;
     diff.retryCommands = execution.retryCommands;
     diff.verification = execution.verification;
     return execution;
+}
+
+function shouldAcceptExecution(execution) {
+    return execution.ok || execution.verification?.skipped === true;
+}
+
+function createExecutionFailure(message, commands, execution) {
+    return {
+        ok: false,
+        message,
+        commands,
+        verification: execution.verification,
+    };
 }
 
 export class BuilderCore {
@@ -242,7 +268,15 @@ export class BuilderCore {
             targetPartIds: ['main_structure'],
         });
         const commands = diffToCommands(diff);
-        const execution = await executeAndRecord(this.world, diff, commands);
+        const execution = await executeAndRecord(
+            this.world,
+            diff,
+            commands,
+            expectedStatesForDiff([], diff),
+        );
+        if (!shouldAcceptExecution(execution)) {
+            return createExecutionFailure('Build verification failed.', commands, execution);
+        }
 
         updateProjectBlockStates(project, diff);
         project.edits.push(diff);
@@ -286,7 +320,15 @@ export class BuilderCore {
             targetPartIds: project.activeSelection.partIds,
         });
         const commands = diffToCommands(diff);
-        const execution = await executeAndRecord(this.world, diff, commands);
+        const execution = await executeAndRecord(
+            this.world,
+            diff,
+            commands,
+            expectedStatesForDiff(project.blockStates, diff),
+        );
+        if (!shouldAcceptExecution(execution)) {
+            return createExecutionFailure('Edit verification failed.', commands, execution);
+        }
 
         updateProjectBlockStates(project, diff);
         updateTargetPartMaterials(project, diff);
@@ -320,7 +362,15 @@ export class BuilderCore {
             targetPartIds: ['window_row_001'],
         });
         const commands = diffToCommands(diff);
-        const execution = await executeAndRecord(this.world, diff, commands);
+        const execution = await executeAndRecord(
+            this.world,
+            diff,
+            commands,
+            expectedStatesForDiff(project.blockStates, diff),
+        );
+        if (!shouldAcceptExecution(execution)) {
+            return createExecutionFailure('Window edit verification failed.', commands, execution);
+        }
 
         updateProjectBlockStates(project, diff);
         project.parts.window_row_001 = {
@@ -370,7 +420,15 @@ export class BuilderCore {
             targetPartIds: ['main_structure'],
         });
         const commands = diffToCommands(diff);
-        const execution = await executeAndRecord(this.world, diff, commands);
+        const execution = await executeAndRecord(
+            this.world,
+            diff,
+            commands,
+            expectedStatesForDiff(project.blockStates, diff),
+        );
+        if (!shouldAcceptExecution(execution)) {
+            return createExecutionFailure('Resize verification failed.', commands, execution);
+        }
 
         updateProjectBlockStates(project, diff);
         project.bounds = {
@@ -403,11 +461,20 @@ export class BuilderCore {
             return { ok: false, message: 'Nothing to undo.', commands: [] };
         }
 
-        const diff = project.edits.pop();
+        const diff = project.edits[project.edits.length - 1];
         const undoDiff = invertDiff(diff);
         const commands = diffToCommands(undoDiff);
-        const execution = await executeAndRecord(this.world, undoDiff, commands);
+        const execution = await executeAndRecord(
+            this.world,
+            undoDiff,
+            commands,
+            expectedStatesForDiff(project.blockStates, undoDiff),
+        );
+        if (!shouldAcceptExecution(execution)) {
+            return createExecutionFailure('Undo verification failed.', commands, execution);
+        }
 
+        project.edits.pop();
         updateProjectBlockStates(project, undoDiff);
         updateTargetPartMaterials(project, diff, 'before');
         applyProjectMetadataSnapshot(project, diff.projectBefore);
@@ -429,10 +496,19 @@ export class BuilderCore {
             return { ok: false, message: 'Nothing to redo.', commands: [] };
         }
 
-        const diff = project.redo.pop();
+        const diff = project.redo[project.redo.length - 1];
         const commands = diffToCommands(diff);
-        const execution = await executeAndRecord(this.world, diff, commands);
+        const execution = await executeAndRecord(
+            this.world,
+            diff,
+            commands,
+            expectedStatesForDiff(project.blockStates, diff),
+        );
+        if (!shouldAcceptExecution(execution)) {
+            return createExecutionFailure('Redo verification failed.', commands, execution);
+        }
 
+        project.redo.pop();
         updateProjectBlockStates(project, diff);
         updateTargetPartMaterials(project, diff);
         applyProjectMetadataSnapshot(project, diff.projectAfter);
