@@ -615,6 +615,8 @@ export class BuilderCore {
             summary: 'repair registered blocks',
             targetPartIds,
         });
+        diff.projectBefore = snapshotProjectMetadata(project);
+        diff.projectAfter = snapshotProjectMetadata(project);
         const commands = diffToCommands(diff);
         const execution = await executeAndRecord(
             this.world,
