@@ -30,11 +30,6 @@ function createSkippedVerification(reason) {
     };
 }
 
-function targetActualBlocks(scanBlocks, expected) {
-    const targetPositions = new Set(expected.map((state) => posKey(state.pos)));
-    return scanBlocks.filter((state) => targetPositions.has(posKey(state.pos)));
-}
-
 function createScanStateWorld(scanBlocks) {
     const byPos = new Map(scanBlocks.map((state) => [posKey(state.pos), state.block]));
     return {
@@ -69,8 +64,7 @@ export async function verifyDiff({ world, diff, side = 'after' }) {
 
     const scan = await scanVolume(world, bounds);
     const expected = diff[side];
-    const actual = targetActualBlocks(scan.blocks, expected);
-    const drift = reconcileBlockStates({ expected, actual });
+    const drift = reconcileBlockStates({ expected, actual: scan.blocks });
 
     return {
         ok: drift.ok,
@@ -110,7 +104,7 @@ export async function executeVerifiedDiff({ world, diff, commands = diffToComman
     }
 
     return {
-        ok: verification.ok || verification.skipped,
+        ok: verification.ok,
         commands,
         retryCommands,
         verification,

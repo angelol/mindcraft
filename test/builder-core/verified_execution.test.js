@@ -69,6 +69,27 @@ test('executeVerifiedDiff retries missing target blocks once', async () => {
     assert.equal(world.setBlocksCalls, 2);
 });
 
+test('executeVerifiedDiff reports unexpected blocks inside dirty bounds', async () => {
+    const world = new FakeWorld([
+        { pos: [1, 0, 0], block: 'dirt' },
+    ]);
+    const diff = createDiff(world, [
+        { pos: [0, 0, 0], block: 'stone' },
+    ], { editId: 'edit_001', summary: 'build block' });
+    diff.bounds = {
+        min: [0, 0, 0],
+        max: [1, 0, 0],
+    };
+
+    const result = await executeVerifiedDiff({ world, diff });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.verification.drift.summary.unexpected, 1);
+    assert.deepEqual(result.verification.drift.unexpected, [
+        { pos: [1, 0, 0], expected: 'air', actual: 'dirt' },
+    ]);
+});
+
 test('executeVerifiedDiff marks command-only worlds as unverified without retrying', async () => {
     const world = new CommandOnlyWorld();
     const diff = createDiff(world, [
@@ -77,7 +98,7 @@ test('executeVerifiedDiff marks command-only worlds as unverified without retryi
 
     const result = await executeVerifiedDiff({ world, diff });
 
-    assert.equal(result.ok, true);
+    assert.equal(result.ok, false);
     assert.deepEqual(result.retryCommands, []);
     assert.deepEqual(world.commands, [
         '/setblock 0 0 0 stone',
