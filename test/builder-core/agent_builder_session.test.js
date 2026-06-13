@@ -6,15 +6,23 @@ import { tmpdir } from 'node:os';
 import { MinecraftCommandWorld } from '../../src/builder-core/world_adapters/minecraft_command_world.js';
 import { getBuilderForAgent } from '../../src/builder-core/agent_builder_session.js';
 
-test('MinecraftCommandWorld sends commands through bot chat and reads air', () => {
+test('MinecraftCommandWorld sends commands and scans loaded bot blocks', async () => {
     const sent = [];
+    const blocks = new Map([
+        ['10,20,30', { name: 'stone' }],
+        ['11,20,30', { name: 'air' }],
+    ]);
     const world = new MinecraftCommandWorld({
+        blockAt(pos) {
+            return blocks.get(`${pos.x},${pos.y},${pos.z}`) || null;
+        },
         chat(command) {
             sent.push(command);
         },
     });
 
-    assert.equal(world.getBlock([10, 20, 30]), 'air');
+    assert.equal(world.getBlock([10, 20, 30]), 'stone');
+    assert.equal(world.getBlock([99, 20, 30]), 'air');
 
     world.setBlocks([
         { pos: [0, 0, 0], block: 'stone' },
@@ -24,6 +32,12 @@ test('MinecraftCommandWorld sends commands through bot chat and reads air', () =
         '/fill 0 0 0 1 0 0 glass',
     ]);
 
+    const scan = await world.scanVolume({ min: [10, 20, 30], max: [11, 20, 30] });
+
+    assert.deepEqual(scan.blocks, [
+        { pos: [10, 20, 30], block: 'stone' },
+        { pos: [11, 20, 30], block: 'air' },
+    ]);
     assert.deepEqual(sent, [
         '/setblock 0 0 0 stone',
         '/fill 0 0 0 1 0 0 glass',
@@ -37,6 +51,12 @@ test('getBuilderForAgent caches builders and writes the agent registry path', as
     const agent = {
         name: 'task_7_agent',
         bot: {
+            blockAt(pos) {
+                if ((pos.x === 0 || pos.x === 1) && pos.y === 0 && pos.z === 0) {
+                    return { name: 'stone' };
+                }
+                return null;
+            },
             chat(command) {
                 sent.push(command);
             },
