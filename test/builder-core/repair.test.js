@@ -101,6 +101,32 @@ test('repair status preserves unexpected drift after fixing registered blocks', 
     });
 });
 
+test('clean selection repair keeps status drift scoped to full project', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 5x4x3');
+    await core.edit('add windows');
+
+    const scan = await core.scan();
+
+    assert.equal(scan.ok, true);
+
+    const repair = await core.repair('repair this');
+
+    assert.equal(repair.ok, true);
+    assert.equal(repair.message, 'No registered blocks needed repair.');
+
+    const status = await core.status();
+
+    assert.deepEqual(status.lastScan.drift.summary, {
+        missing: 0,
+        changed: 0,
+        unexpected: 0,
+    });
+});
+
 test('undoing and redoing repair preserves registered block state and metadata', async () => {
     const world = new FakeWorld();
     const store = createMemoryStore();

@@ -613,7 +613,7 @@ export class BuilderCore {
         }));
 
         if (changes.length === 0) {
-            project.lastScan = lastScan;
+            project.lastScan = (await createProjectScanSummary(this.world, project)).lastScan;
             await this.store.save(registry);
 
             return {
