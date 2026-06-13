@@ -40,6 +40,16 @@ test('blocksToCommands keeps different blocks separate', () => {
     ]);
 });
 
+test('blocksToCommands rejects duplicate normalized positions', () => {
+    assert.throws(
+        () => blocksToCommands([
+            { pos: [0, 0, 0], block: 'stone' },
+            { pos: ['0', 0.9, 0], block: 'glass' },
+        ]),
+        /Duplicate block position: 0,0,0/,
+    );
+});
+
 test('diffToCommands uses a selected side and rejects invalid sides', () => {
     const diff = {
         before: [

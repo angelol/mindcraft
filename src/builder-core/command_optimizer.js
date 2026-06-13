@@ -1,10 +1,20 @@
 import { normalizeBlock, normalizePos, posKey, sortBlockStates } from './block_state.js';
 
 function normalizeBlockStates(blocks) {
-    return sortBlockStates(blocks.map((state) => ({
-        pos: normalizePos(state.pos),
-        block: normalizeBlock(state.block),
-    })));
+    const seen = new Set();
+    const states = blocks.map((state) => {
+        const pos = normalizePos(state.pos);
+        const key = posKey(pos);
+        if (seen.has(key)) {
+            throw new Error(`Duplicate block position: ${key}`);
+        }
+        seen.add(key);
+        return {
+            pos,
+            block: normalizeBlock(state.block),
+        };
+    });
+    return sortBlockStates(states);
 }
 
 function stateGroupKey(state) {
