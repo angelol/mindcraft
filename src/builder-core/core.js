@@ -1,11 +1,13 @@
 import { diffToCommands } from './command_optimizer.js';
-import { applyDiff, createDiff, invertDiff } from './diff.js';
+import { createDiff, invertDiff } from './diff.js';
 import { normalizeBlock, normalizePos, posKey, sortBlockStates } from './block_state.js';
-import { expandBounds } from './bounds.js';
+import { boundsFromStates, expandBounds } from './bounds.js';
 import { reconcileBlockStates, formatDriftSummary } from './reconciliation.js';
 import { scanVolume } from './scanner.js';
+import { executeVerifiedDiff } from './verified_execution.js';
 
 const DEFAULT_DIMENSIONS = { width: 5, height: 4, depth: 5 };
+const DEFAULT_SCAN_PADDING = 1;
 const KNOWN_BLOCKS = [
     'gray_stained_glass_pane',
     'dark_oak_planks',
@@ -103,7 +105,7 @@ function getProjectScanBounds(project) {
     if (!project?.bounds) {
         return null;
     }
-    return expandBounds(project.bounds, 1);
+    return expandBounds(project.bounds, DEFAULT_SCAN_PADDING);
 }
 
 function getActivePart(project) {
@@ -120,18 +122,6 @@ function consumeNextEditId(project) {
         : project.edits.length + project.redo.length + 1;
     project.nextEditNumber = editNumber + 1;
     return `edit_${String(editNumber).padStart(3, '0')}`;
-}
-
-function executeCommands(world, commands) {
-    if (typeof world.executeCommands === 'function') {
-        world.executeCommands(commands);
-    }
-}
-
-function applyDiffToWorld(world, diff, side = 'after') {
-    if (typeof world.setBlocks === 'function') {
-        applyDiff(world, diff, side);
-    }
 }
 
 function applyBlockStates(blockStates, states) {
@@ -210,6 +200,15 @@ function applyProjectMetadataSnapshot(project, snapshot) {
     project.parts = structuredClone(snapshot.parts);
 }
 
+async function executeAndRecord(world, diff, commands) {
+    diff.bounds = diff.bounds || boundsFromStates([...diff.before, ...diff.after]);
+    const execution = await executeVerifiedDiff({ world, diff, commands });
+    diff.commands = commands;
+    diff.retryCommands = execution.retryCommands;
+    diff.verification = execution.verification;
+    return execution;
+}
+
 export class BuilderCore {
     constructor({ store, world }) {
         this.store = store;
@@ -243,9 +242,8 @@ export class BuilderCore {
             targetPartIds: ['main_structure'],
         });
         const commands = diffToCommands(diff);
+        const execution = await executeAndRecord(this.world, diff, commands);
 
-        applyDiffToWorld(this.world, diff);
-        executeCommands(this.world, commands);
         updateProjectBlockStates(project, diff);
         project.edits.push(diff);
         registry.activeProjectId = projectId;
@@ -256,6 +254,7 @@ export class BuilderCore {
             ok: true,
             message: `Built simple structure with ${blocks.length} blocks.`,
             commands,
+            verification: execution.verification,
         };
     }
 
@@ -287,9 +286,8 @@ export class BuilderCore {
             targetPartIds: project.activeSelection.partIds,
         });
         const commands = diffToCommands(diff);
+        const execution = await executeAndRecord(this.world, diff, commands);
 
-        applyDiffToWorld(this.world, diff);
-        executeCommands(this.world, commands);
         updateProjectBlockStates(project, diff);
         updateTargetPartMaterials(project, diff);
         project.edits.push(diff);
@@ -300,6 +298,7 @@ export class BuilderCore {
             ok: true,
             message: `Changed active selection to ${material}.`,
             commands,
+            verification: execution.verification,
         };
     }
 
@@ -321,9 +320,8 @@ export class BuilderCore {
             targetPartIds: ['window_row_001'],
         });
         const commands = diffToCommands(diff);
+        const execution = await executeAndRecord(this.world, diff, commands);
 
-        applyDiffToWorld(this.world, diff);
-        executeCommands(this.world, commands);
         updateProjectBlockStates(project, diff);
         project.parts.window_row_001 = {
             id: 'window_row_001',
@@ -345,6 +343,7 @@ export class BuilderCore {
             ok: true,
             message: `Added window row with ${blockPositions.length} blocks.`,
             commands,
+            verification: execution.verification,
         };
     }
 
@@ -371,9 +370,8 @@ export class BuilderCore {
             targetPartIds: ['main_structure'],
         });
         const commands = diffToCommands(diff);
+        const execution = await executeAndRecord(this.world, diff, commands);
 
-        applyDiffToWorld(this.world, diff);
-        executeCommands(this.world, commands);
         updateProjectBlockStates(project, diff);
         project.bounds = {
             min: [0, 0, 0],
@@ -394,6 +392,7 @@ export class BuilderCore {
             ok: true,
             message: `Resized simple structure to ${dimensions.width}x${dimensions.height}x${dimensions.depth}.`,
             commands,
+            verification: execution.verification,
         };
     }
 
@@ -407,16 +406,20 @@ export class BuilderCore {
         const diff = project.edits.pop();
         const undoDiff = invertDiff(diff);
         const commands = diffToCommands(undoDiff);
+        const execution = await executeAndRecord(this.world, undoDiff, commands);
 
-        applyDiffToWorld(this.world, undoDiff);
-        executeCommands(this.world, commands);
         updateProjectBlockStates(project, undoDiff);
         updateTargetPartMaterials(project, diff, 'before');
         applyProjectMetadataSnapshot(project, diff.projectBefore);
         project.redo.push(diff);
         await this.store.save(registry);
 
-        return { ok: true, message: `Undid ${diff.summary}.`, commands };
+        return {
+            ok: true,
+            message: `Undid ${diff.summary}.`,
+            commands,
+            verification: execution.verification,
+        };
     }
 
     async redo() {
@@ -428,16 +431,20 @@ export class BuilderCore {
 
         const diff = project.redo.pop();
         const commands = diffToCommands(diff);
+        const execution = await executeAndRecord(this.world, diff, commands);
 
-        applyDiffToWorld(this.world, diff);
-        executeCommands(this.world, commands);
         updateProjectBlockStates(project, diff);
         updateTargetPartMaterials(project, diff);
         applyProjectMetadataSnapshot(project, diff.projectAfter);
         project.edits.push(diff);
         await this.store.save(registry);
 
-        return { ok: true, message: `Redid ${diff.summary}.`, commands };
+        return {
+            ok: true,
+            message: `Redid ${diff.summary}.`,
+            commands,
+            verification: execution.verification,
+        };
     }
 
     async scan() {

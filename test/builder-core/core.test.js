@@ -59,6 +59,29 @@ test('BuilderCore builds a simple rectangular structure and records active selec
     assert.deepEqual(registry.projects.project_001.blockStates, world.getAllBlocks());
 });
 
+test('BuilderCore stores dirty bounds and verification metadata for edits', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    const result = await core.build('build a stone house 2x1x1');
+
+    assert.equal(result.ok, true);
+    assert.equal(result.verification.ok, true);
+
+    const registry = await store.load();
+    const diff = registry.projects.project_001.edits[0];
+    assert.deepEqual(diff.bounds, {
+        min: [0, 0, 0],
+        max: [1, 0, 0],
+    });
+    assert.deepEqual(diff.verification.drift.summary, {
+        missing: 0,
+        changed: 0,
+        unexpected: 0,
+    });
+});
+
 test('BuilderCore can replace material on active selection and undo/redo it', async () => {
     const world = new FakeWorld();
     const store = createMemoryStore();
