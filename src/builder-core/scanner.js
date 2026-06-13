@@ -1,4 +1,4 @@
-import { normalizeBlock } from './block_state.js';
+import { normalizeBlock, normalizePos, sortBlockStates } from './block_state.js';
 import { eachPosInBounds, normalizeBounds } from './bounds.js';
 
 export async function scanVolume(world, bounds) {
@@ -8,10 +8,10 @@ export async function scanVolume(world, bounds) {
         const scan = await world.scanVolume(normalizedBounds);
         return {
             bounds: normalizeBounds(scan.bounds || normalizedBounds),
-            blocks: (scan.blocks || []).map((state) => ({
-                pos: state.pos,
+            blocks: sortBlockStates((scan.blocks || []).map((state) => ({
+                pos: normalizePos(state.pos),
                 block: normalizeBlock(state.block),
-            })),
+            }))),
         };
     }
 
@@ -29,6 +29,6 @@ export async function scanVolume(world, bounds) {
 
     return {
         bounds: normalizedBounds,
-        blocks,
+        blocks: sortBlockStates(blocks),
     };
 }

@@ -46,7 +46,7 @@ export class FakeWorld {
 
         return {
             bounds: normalizedBounds,
-            blocks,
+            blocks: sortBlockStates(blocks),
         };
     }
 
