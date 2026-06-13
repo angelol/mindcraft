@@ -373,41 +373,161 @@ Verification tests can run against a fake world adapter first. A later test harn
 
 ### Phase 1: Builder Core MVP
 
-- Build registry JSON store.
-- Active project and selection model.
-- World adapter abstraction.
-- Diff and undo/redo.
-- `/setblock` and simple `/fill` command generation.
-- Basic commands: build, edit, undo, redo, status.
-- Material replacement and simple feature addition.
+Goal: create the minimum useful creative-mode builder path with persistent state, immediate edits, undo, and command generation. Phase 1 does not try to solve rich architecture generation. It proves that Mindcraft can route build requests through a separate builder core and that edits are tracked as durable, undoable diffs.
+
+Deliverables:
+
+- Builder core module with clear public API for `build`, `edit`, `undo`, `redo`, and `status`.
+- JSON build registry store with one active project, active structure, active selection, parts, and edit history.
+- World adapter abstraction with a fake in-memory adapter for tests and a Minecraft command adapter for Mindcraft integration.
+- Diff model that records `before` and `after` block states for every edit.
+- Undo and redo using stored diffs.
+- `/setblock` command generation.
+- Simple `/fill` optimization for rectangular same-block cuboids.
+- Basic Mindcraft commands: `!build`, `!buildEdit`, `!buildUndo`, `!buildRedo`, `!buildStatus`.
+- Initial operations:
+  - create a simple rectangular structure from a text request
+  - replace material on the active selection
+  - add a simple feature group such as a rectangular window row
+  - resize a simple rectangular structure
+
+Explicitly out of scope:
+
+- LLM-authored geometry DSL.
+- Rich creative primitives such as spiral stairs, roof pools, hidden cellars, and fire escapes.
+- Real Minecraft world scanning.
+- Post-execution verification.
+- Multi-project support.
+- Dashboard UI.
+
+Exit criteria:
+
+- A user can create a simple structure, change its material, add simple windows, resize it, undo, and redo through Minecraft chat commands.
+- The registry persists the active project and semantic part metadata across agent restarts.
+- Tests cover registry persistence, selection updates, diff generation, undo/redo, command generation, and simple `/fill` optimization.
 
 ### Phase 2: Scanner and Verification
 
-- Scan rectangular volumes.
-- Reconcile registry with actual world blocks.
-- Verify after command execution.
-- Retry failed block placements.
+Goal: make the builder core trust the real Minecraft world instead of only its registry. Phase 2 adds scan/reconcile/verify behavior so edits survive failed commands, manual user changes, and partial builds.
+
+Deliverables:
+
+- Rectangular volume scanner for the Minecraft adapter and fake world adapter.
+- Registry reconciliation that compares expected blocks against actual scanned blocks.
+- Dirty-region tracking for affected edit bounds.
+- Verification after each command batch.
+- One retry pass for failed block placements.
+- Repair operation that restores a registered part or structure from its expected voxel state.
+- Status output that reports registry/world drift in a concise form.
+
+Explicitly out of scope:
+
+- Semantic inference of unknown unregistered buildings.
+- Complex connected-component recognition.
+- Full real-server test harness automation.
+- Creative geometry DSL.
+
+Exit criteria:
+
+- If a registered wall is manually changed, `!buildScan` detects the drift.
+- If a registered structure is damaged, `!buildEdit("repair this")` or equivalent repair command restores it.
+- If command execution leaves missing blocks, verification reports and retries them once.
+- Tests cover fake-world scanning, reconciliation, drift reporting, verification success, verification failure, and repair.
 
 ### Phase 3: Creative Geometry
 
-- Add structured design spec schema.
-- Add constrained geometry DSL.
-- Add primitives for walls, floors, roofs, windows, doors, stairs, pools, towers, and underground rooms.
-- Add semantic tagging for generated parts.
+Goal: let the agent express creative, granular design intent without emitting raw Minecraft commands as the primary artifact. Phase 3 introduces structured design specs and a constrained geometry DSL that compile to validated voxel plans.
+
+Deliverables:
+
+- Structured design spec schema for structures, parts, feature groups, materials, bounds, orientation, and style notes.
+- Constrained declarative geometry DSL with no filesystem, network, shell, or arbitrary process access.
+- Voxel compiler that turns specs/DSL output into exact block states tagged with semantic part IDs.
+- Validation for block names, non-empty geometry, bounds, destructive edits, and collisions with protected registered parts.
+- Initial creative primitives:
+  - walls
+  - floors
+  - flat and pitched roofs
+  - rectangular and arched windows
+  - doors
+  - straight stairs
+  - spiral/helix stairs
+  - pools
+  - towers
+  - underground rooms
+- Material palette handling with named roles such as wall, trim, glass, roof, floor, accent, water, and lighting.
+
+Explicitly out of scope:
+
+- 3D preview UI.
+- Schematic import/export.
+- Multi-agent building.
+- Arbitrary JavaScript geometry escape hatch.
+
+Exit criteria:
+
+- The agent can create a semantically tagged structure from a design spec.
+- The agent can add a helix stair with configurable radius, height, turns, railings, and materials.
+- The agent can add a roof pool and hidden underground room through structured operations.
+- Generated geometry is validated before commands are produced.
+- Tests cover schema validation, DSL compilation, primitive generation, semantic tagging, and collision checks.
 
 ### Phase 4: Rich Iteration
 
-- Add operation planner for ambiguous live edits.
-- Improve selection resolution.
-- Add restyle operations.
-- Add repair mode.
-- Add schematic/export support.
+Goal: make the editing experience feel like a live creative loop. Phase 4 improves natural-language edit resolution, active selection behavior, restyling, and higher-level iterative modifications.
+
+Deliverables:
+
+- Operation planner that maps short user requests to builder operations using active project, active selection, recent edits, and scan summaries.
+- Improved reference resolution for "this", "that", "those", "north side", "outside", "roof", "ground", "make it bigger", and "change it to stone".
+- Restyle operations that change materials, proportions, ornamentation, and feature rhythm while preserving structure identity.
+- Selection update rules after every edit.
+- Semantic repair mode for registered parts and features.
+- Schematic/export support for the active project or selected structure.
+- Higher-level feature operations:
+  - exterior fire escape from roof to ground
+  - wine cellar with hidden entrance
+  - facade restyling
+  - roofline restyling
+  - tower addition
+
+Explicitly out of scope:
+
+- Full dashboard UI.
+- Visual diff inspection.
+- Multi-project workspace management beyond one active project.
+- Collaborative multi-agent building.
+
+Exit criteria:
+
+- The user can issue a sequence such as "add windows on the north side", "make them taller", "change the frames to stone", "add a pool on the roof", "make it bigger", "add a fire escape", "add a hidden wine cellar", and "undo that" without manually restating coordinates.
+- Each operation updates active selection and semantic registry state.
+- Restyle operations preserve registered parts unless the user explicitly asks to replace/remove them.
+- Tests cover operation planning, pronoun/selection resolution, restyle diffs, semantic repair, schematic/export output, and the full iterative command sequence.
 
 ### Phase 5: Preview and Tooling
 
-- Optional 3D preview.
-- Visual diff inspection.
-- Build library and reusable style presets.
+Goal: add tools that improve confidence and reuse once the core live-editing loop works. Phase 5 is about visibility and authoring support, not correctness of the core builder path.
+
+Deliverables:
+
+- Optional 3D preview for the active project or pending edit.
+- Visual diff inspection showing added, removed, and changed blocks.
+- Build library for reusable structures, parts, palettes, and style presets.
+- Import/export workflow for saved builder projects.
+- Dashboard integration for status, active selection, recent edits, undo/redo, and preview links.
+
+Explicitly out of scope:
+
+- Changing the core execution model.
+- Requiring preview confirmation for normal edits.
+- Replacing Minecraft chat as the primary fast-iteration interface.
+
+Exit criteria:
+
+- The dashboard can show the active project, selected part, recent edits, and current registry/world drift status.
+- A user can preview or inspect a diff without making preview mandatory.
+- A user can save and reuse a style preset or structure part in a later build.
 
 ## Implementation Defaults
 
