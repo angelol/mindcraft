@@ -42,6 +42,7 @@ That process boundary matters. If an agent crashes or restarts, the parent MindS
 - Install: `npm install`
 - Run app: `npm start` or `node main.js`
 - Run a task: `node main.js --task_path tasks/basic/single_agent.json --task_id gather_oak_logs`
+- Run tests for new code: `npm test -- <test files>`
 - Lint availability is via `eslint`, but check `package.json` before assuming a complete test/lint script exists.
 
 Minecraft defaults:

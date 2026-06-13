@@ -380,6 +380,7 @@ Deliverables:
 - Builder core module with clear public API for `build`, `edit`, `undo`, `redo`, and `status`.
 - JSON build registry store with one active project, active structure, active selection, parts, and edit history.
 - World adapter abstraction with a fake in-memory adapter for tests and a Minecraft command adapter for Mindcraft integration.
+- Node built-in unit test harness for new builder-core code.
 - Diff model that records `before` and `after` block states for every edit.
 - Undo and redo using stored diffs.
 - `/setblock` command generation.
