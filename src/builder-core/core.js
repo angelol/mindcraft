@@ -116,6 +116,24 @@ function getActivePart(project) {
     return project.parts?.[partId] || null;
 }
 
+function expectedStatesForActiveSelection(project) {
+    const partIds = project.activeSelection?.partIds || [];
+    const wanted = new Set();
+
+    for (const partId of partIds) {
+        const part = project.parts?.[partId];
+        for (const pos of part?.blockPositions || []) {
+            wanted.add(posKey(pos));
+        }
+    }
+
+    if (wanted.size === 0) {
+        return project.blockStates || [];
+    }
+
+    return (project.blockStates || []).filter((state) => wanted.has(posKey(state.pos)));
+}
+
 function consumeNextEditId(project) {
     const editNumber = Number.isInteger(project.nextEditNumber)
         ? project.nextEditNumber
@@ -553,6 +571,73 @@ export class BuilderCore {
             message: formatDriftSummary(drift),
             drift,
             scan,
+        };
+    }
+
+    async repair() {
+        const registry = await this.store.load();
+        const project = getActiveProject(registry);
+        if (!project) {
+            return { ok: false, message: 'No active build project.', commands: [] };
+        }
+
+        const bounds = getProjectScanBounds(project);
+        const scan = await scanVolume(this.world, bounds);
+        const expected = expectedStatesForActiveSelection(project);
+        const drift = reconcileBlockStates({
+            expected,
+            actual: scan.blocks,
+        });
+        const lastScan = {
+            scannedAt: new Date().toISOString(),
+            bounds: scan.bounds,
+            drift,
+        };
+        const changes = [...drift.missing, ...drift.changed].map((item) => ({
+            pos: item.pos,
+            block: item.expected,
+        }));
+
+        if (changes.length === 0) {
+            project.lastScan = lastScan;
+            await this.store.save(registry);
+
+            return {
+                ok: true,
+                message: 'No registered blocks needed repair.',
+                commands: [],
+            };
+        }
+
+        const targetPartIds = project.activeSelection?.partIds || [];
+        const diff = createDiff(createProjectStateWorld({ blockStates: scan.blocks }), changes, {
+            editId: consumeNextEditId(project),
+            summary: 'repair registered blocks',
+            targetPartIds,
+        });
+        const commands = diffToCommands(diff);
+        const execution = await executeAndRecord(
+            this.world,
+            diff,
+            commands,
+            expectedStatesForDiff(scan.blocks, diff),
+        );
+        const executedCommands = [...commands, ...execution.retryCommands];
+        if (!shouldAcceptExecution(execution)) {
+            return createExecutionFailure('Repair verification failed.', executedCommands, execution);
+        }
+
+        updateProjectBlockStates(project, diff);
+        project.edits.push(diff);
+        project.redo = [];
+        project.lastScan = lastScan;
+        await this.store.save(registry);
+
+        return {
+            ok: true,
+            message: `Repaired ${changes.length} registered blocks.`,
+            commands: executedCommands,
+            verification: execution.verification,
         };
     }
 
