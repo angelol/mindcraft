@@ -1,4 +1,5 @@
 import { normalizeBlock, parsePosKey, posKey, sortBlockStates } from '../block_state.js';
+import { eachPosInBounds, normalizeBounds } from '../bounds.js';
 
 export class FakeWorld {
     constructor(initialBlocks = []) {
@@ -33,6 +34,20 @@ export class FakeWorld {
             states.push({ pos: parsePosKey(key), block });
         }
         return sortBlockStates(states);
+    }
+
+    async scanVolume(bounds) {
+        const normalizedBounds = normalizeBounds(bounds);
+        const blocks = [];
+
+        for (const pos of eachPosInBounds(normalizedBounds)) {
+            blocks.push({ pos, block: this.getBlock(pos) });
+        }
+
+        return {
+            bounds: normalizedBounds,
+            blocks,
+        };
     }
 
     executeCommands(commands) {
