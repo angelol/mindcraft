@@ -31,7 +31,13 @@ test('BuilderCore builds a simple rectangular structure and records active selec
     assert.equal(status.activeProjectId, 'project_001');
     assert.equal(status.activeSelection.partIds[0], 'main_structure');
     assert.equal(world.getBlock([0, 0, 0]), 'stone');
-    assert.equal(world.getBlock([3, 1, 2]), 'stone');
+    assert.equal(world.getBlock([3, 2, 1]), 'stone');
+
+    const registry = await store.load();
+    assert.deepEqual(registry.projects.project_001.bounds, {
+        min: [0, 0, 0],
+        max: [3, 2, 1],
+    });
 });
 
 test('BuilderCore can replace material on active selection and undo/redo it', async () => {

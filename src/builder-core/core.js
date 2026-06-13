@@ -24,8 +24,8 @@ function parseDimensions(request) {
 
     return {
         width: Number(match[1]),
-        height: Number(match[3]),
-        depth: Number(match[2]),
+        height: Number(match[2]),
+        depth: Number(match[3]),
     };
 }
 
