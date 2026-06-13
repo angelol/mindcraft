@@ -1,5 +1,6 @@
 .vscode/
 .idea/
+.worktrees/
 node_modules/
 package-lock.json
 code_records/
