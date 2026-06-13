@@ -2,13 +2,26 @@ import { Vec3 } from 'vec3';
 import { normalizeBlock, sortBlockStates } from '../block_state.js';
 import { eachPosInBounds, normalizeBounds } from '../bounds.js';
 
+function createDelay(ms) {
+    if (ms <= 0) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
+
 export class MinecraftCommandWorld {
-    constructor(bot) {
+    constructor(bot, options = {}) {
+        const { scanDelayMs = 50 } = options || {};
         this.bot = bot;
+        this.scanDelayMs = Math.max(0, Number(scanDelayMs) || 0);
+        this.canVerifyBlocks = typeof bot.blockAt === 'function';
+        this.pendingScanDelay = null;
     }
 
     getBlock(pos) {
-        if (typeof this.bot.blockAt !== 'function') {
+        if (!this.canVerifyBlocks) {
             return 'air';
         }
 
@@ -22,6 +35,7 @@ export class MinecraftCommandWorld {
     async scanVolume(bounds) {
         const normalizedBounds = normalizeBounds(bounds);
         const blocks = [];
+        await this.waitForPendingScanDelay();
 
         for (const pos of eachPosInBounds(normalizedBounds)) {
             blocks.push({ pos, block: this.getBlock(pos) });
@@ -34,8 +48,23 @@ export class MinecraftCommandWorld {
     }
 
     executeCommands(commands) {
+        let sentCommand = false;
         for (const command of commands) {
             this.bot.chat(command);
+            sentCommand = true;
+        }
+
+        if (sentCommand && this.canVerifyBlocks) {
+            this.pendingScanDelay = createDelay(this.scanDelayMs);
+        }
+    }
+
+    async waitForPendingScanDelay() {
+        const pendingScanDelay = this.pendingScanDelay;
+        this.pendingScanDelay = null;
+
+        if (pendingScanDelay) {
+            await pendingScanDelay;
         }
     }
 }

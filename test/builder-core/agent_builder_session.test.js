@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { MinecraftCommandWorld } from '../../src/builder-core/world_adapters/minecraft_command_world.js';
 import { getBuilderForAgent } from '../../src/builder-core/agent_builder_session.js';
+import { createDiff } from '../../src/builder-core/diff.js';
+import { executeVerifiedDiff } from '../../src/builder-core/verified_execution.js';
 
 test('MinecraftCommandWorld sends commands and scans loaded bot blocks', async () => {
     const sent = [];
@@ -19,7 +21,7 @@ test('MinecraftCommandWorld sends commands and scans loaded bot blocks', async (
         chat(command) {
             sent.push(command);
         },
-    });
+    }, { scanDelayMs: 0 });
 
     assert.equal(world.getBlock([10, 20, 30]), 'stone');
     assert.equal(world.getBlock([99, 20, 30]), 'air');
@@ -62,6 +64,58 @@ test('MinecraftCommandWorld does not treat sent commands as scanned blocks', asy
     assert.deepEqual(scan.blocks, [
         { pos: [0, 0, 0], block: 'air' },
     ]);
+    assert.deepEqual(sent, [
+        '/setblock 0 0 0 stone',
+    ]);
+});
+
+test('MinecraftCommandWorld waits for pending command updates before scanning', async () => {
+    const sent = [];
+    const blocks = new Map();
+    const world = new MinecraftCommandWorld({
+        blockAt(pos) {
+            return blocks.get(`${pos.x},${pos.y},${pos.z}`) || null;
+        },
+        chat(command) {
+            sent.push(command);
+            queueMicrotask(() => {
+                blocks.set('0,0,0', { name: 'stone' });
+                blocks.set('1,0,0', { name: 'stone' });
+            });
+        },
+    }, { scanDelayMs: 0 });
+    const diff = createDiff(world, [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'stone' },
+    ], { editId: 'edit_001', summary: 'build delayed line' });
+
+    const result = await executeVerifiedDiff({ world, diff });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.verification.skipped, false);
+    assert.deepEqual(sent, [
+        '/fill 0 0 0 1 0 0 stone',
+    ]);
+});
+
+test('MinecraftCommandWorld without blockAt opts out of block verification', async () => {
+    const sent = [];
+    const world = new MinecraftCommandWorld({
+        chat(command) {
+            sent.push(command);
+        },
+    });
+    const diff = createDiff(world, [
+        { pos: [0, 0, 0], block: 'stone' },
+    ], { editId: 'edit_001', summary: 'build command-only block' });
+
+    const result = await executeVerifiedDiff({ world, diff });
+
+    assert.equal(world.canVerifyBlocks, false);
+    assert.equal(result.ok, false);
+    assert.equal(result.verification.skipped, true);
+    assert.equal(result.verification.reason, 'world_not_observable');
+    assert.deepEqual(result.retryCommands, []);
     assert.deepEqual(sent, [
         '/setblock 0 0 0 stone',
     ]);
