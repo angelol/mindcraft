@@ -1,6 +1,6 @@
 import { diffToCommands } from './command_optimizer.js';
 import { applyDiff, createDiff, invertDiff } from './diff.js';
-import { normalizeBlock, normalizePos } from './block_state.js';
+import { normalizeBlock, normalizePos, posKey, sortBlockStates } from './block_state.js';
 
 const DEFAULT_DIMENSIONS = { width: 5, height: 4, depth: 5 };
 const KNOWN_BLOCKS = [
@@ -76,6 +76,8 @@ function createProject({ id, name, dimensions, material, blocks }) {
         },
         edits: [],
         redo: [],
+        nextEditNumber: 2,
+        blockStates: applyBlockStates([], blocks),
     };
 }
 
@@ -94,13 +96,77 @@ function getActivePart(project) {
     return project.parts?.[partId] || null;
 }
 
-function nextEditId(project) {
-    return `edit_${String(project.edits.length + 1).padStart(3, '0')}`;
+function consumeNextEditId(project) {
+    const editNumber = Number.isInteger(project.nextEditNumber)
+        ? project.nextEditNumber
+        : project.edits.length + project.redo.length + 1;
+    project.nextEditNumber = editNumber + 1;
+    return `edit_${String(editNumber).padStart(3, '0')}`;
 }
 
 function executeCommands(world, commands) {
     if (typeof world.executeCommands === 'function') {
         world.executeCommands(commands);
+    }
+}
+
+function applyDiffToWorld(world, diff, side = 'after') {
+    if (typeof world.setBlocks === 'function') {
+        applyDiff(world, diff, side);
+    }
+}
+
+function applyBlockStates(blockStates, states) {
+    const byPos = new Map();
+    for (const state of blockStates || []) {
+        const pos = normalizePos(state.pos);
+        const block = normalizeBlock(state.block);
+        if (block !== 'air') {
+            byPos.set(posKey(pos), { pos, block });
+        }
+    }
+
+    for (const state of states) {
+        const pos = normalizePos(state.pos);
+        const block = normalizeBlock(state.block);
+        const key = posKey(pos);
+        if (block === 'air') {
+            byPos.delete(key);
+        } else {
+            byPos.set(key, { pos, block });
+        }
+    }
+
+    return sortBlockStates(Array.from(byPos.values()));
+}
+
+function createProjectStateWorld(project) {
+    const byPos = new Map();
+    for (const state of project.blockStates || []) {
+        byPos.set(posKey(state.pos), normalizeBlock(state.block));
+    }
+
+    return {
+        getBlock(pos) {
+            return byPos.get(posKey(pos)) || 'air';
+        },
+    };
+}
+
+function updateProjectBlockStates(project, diff, side = 'after') {
+    project.blockStates = applyBlockStates(project.blockStates || [], diff[side]);
+}
+
+function updateTargetPartMaterials(project, diff, side = 'after') {
+    const material = diff[side].find((state) => normalizeBlock(state.block) !== 'air')?.block;
+    if (!material) {
+        return;
+    }
+
+    for (const partId of diff.targetPartIds || []) {
+        if (project.parts?.[partId]) {
+            project.parts[partId].material = material;
+        }
     }
 }
 
@@ -123,15 +189,16 @@ export class BuilderCore {
             material,
             blocks,
         });
-        const diff = createDiff(this.world, blocks, {
+        const diff = createDiff(createProjectStateWorld({ blockStates: [] }), blocks, {
             editId: 'edit_001',
             summary: 'build simple structure',
             targetPartIds: ['main_structure'],
         });
         const commands = diffToCommands(diff);
 
-        applyDiff(this.world, diff);
+        applyDiffToWorld(this.world, diff);
         executeCommands(this.world, commands);
+        updateProjectBlockStates(project, diff);
         project.edits.push(diff);
         registry.activeProjectId = projectId;
         registry.projects[projectId] = project;
@@ -158,16 +225,17 @@ export class BuilderCore {
 
         const material = normalizeBlock(parseMaterial(request, part.material || 'stone'));
         const changes = part.blockPositions.map((pos) => ({ pos, block: material }));
-        const diff = createDiff(this.world, changes, {
-            editId: nextEditId(project),
+        const diff = createDiff(createProjectStateWorld(project), changes, {
+            editId: consumeNextEditId(project),
             summary: `replace active selection with ${material}`,
             targetPartIds: project.activeSelection.partIds,
         });
         const commands = diffToCommands(diff);
 
-        applyDiff(this.world, diff);
+        applyDiffToWorld(this.world, diff);
         executeCommands(this.world, commands);
-        part.material = material;
+        updateProjectBlockStates(project, diff);
+        updateTargetPartMaterials(project, diff);
         project.edits.push(diff);
         project.redo = [];
         await this.store.save(registry);
@@ -190,8 +258,10 @@ export class BuilderCore {
         const undoDiff = invertDiff(diff);
         const commands = diffToCommands(undoDiff);
 
-        applyDiff(this.world, undoDiff);
+        applyDiffToWorld(this.world, undoDiff);
         executeCommands(this.world, commands);
+        updateProjectBlockStates(project, undoDiff);
+        updateTargetPartMaterials(project, diff, 'before');
         project.redo.push(diff);
         await this.store.save(registry);
 
@@ -208,8 +278,10 @@ export class BuilderCore {
         const diff = project.redo.pop();
         const commands = diffToCommands(diff);
 
-        applyDiff(this.world, diff);
+        applyDiffToWorld(this.world, diff);
         executeCommands(this.world, commands);
+        updateProjectBlockStates(project, diff);
+        updateTargetPartMaterials(project, diff);
         project.edits.push(diff);
         await this.store.save(registry);
 

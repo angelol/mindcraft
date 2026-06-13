@@ -16,6 +16,24 @@ function createMemoryStore() {
     };
 }
 
+class CommandOnlyWorld {
+    constructor() {
+        this.commands = [];
+    }
+
+    getBlock() {
+        return 'air';
+    }
+
+    executeCommands(commands) {
+        this.commands.push(...commands);
+    }
+
+    getExecutedCommands() {
+        return this.commands.slice();
+    }
+}
+
 test('BuilderCore builds a simple rectangular structure and records active selection', async () => {
     const world = new FakeWorld();
     const store = createMemoryStore();
@@ -38,6 +56,7 @@ test('BuilderCore builds a simple rectangular structure and records active selec
         min: [0, 0, 0],
         max: [3, 2, 1],
     });
+    assert.deepEqual(registry.projects.project_001.blockStates, world.getAllBlocks());
 });
 
 test('BuilderCore can replace material on active selection and undo/redo it', async () => {
@@ -67,4 +86,62 @@ test('BuilderCore can replace material on active selection and undo/redo it', as
         { pos: [0, 0, 0], block: 'oak_planks' },
         { pos: [1, 0, 0], block: 'oak_planks' },
     ]);
+});
+
+test('BuilderCore uses registry state for command-only world undo diffs', async () => {
+    const world = new CommandOnlyWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 2x1x1');
+    await core.edit('change it to oak_planks');
+    const undo = await core.undo();
+
+    assert.equal(undo.ok, true);
+    assert.deepEqual(undo.commands, [
+        '/fill 0 0 0 1 0 0 stone',
+    ]);
+    assert.deepEqual(world.getExecutedCommands().slice(-1), [
+        '/fill 0 0 0 1 0 0 stone',
+    ]);
+
+    const registry = await store.load();
+    assert.deepEqual(registry.projects.project_001.blockStates, [
+        { pos: [0, 0, 0], block: 'stone' },
+        { pos: [1, 0, 0], block: 'stone' },
+    ]);
+});
+
+test('BuilderCore undo and redo restore active part material metadata', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 2x1x1');
+    await core.edit('change it to oak_planks');
+    await core.undo();
+
+    let registry = await store.load();
+    assert.equal(registry.projects.project_001.parts.main_structure.material, 'stone');
+
+    await core.redo();
+
+    registry = await store.load();
+    assert.equal(registry.projects.project_001.parts.main_structure.material, 'oak_planks');
+});
+
+test('BuilderCore creates fresh edit ids after undo and clears redo on new edits', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 2x1x1');
+    await core.edit('change it to oak_planks');
+    await core.undo();
+    await core.edit('change it to bricks');
+
+    const registry = await store.load();
+    const project = registry.projects.project_001;
+    assert.deepEqual(project.edits.map((edit) => edit.editId), ['edit_001', 'edit_003']);
+    assert.deepEqual(project.redo, []);
 });
