@@ -108,6 +108,24 @@ function getProjectScanBounds(project) {
     return expandBounds(project.bounds, DEFAULT_SCAN_PADDING);
 }
 
+async function createProjectScanSummary(world, project) {
+    const bounds = getProjectScanBounds(project);
+    const scan = await scanVolume(world, bounds);
+    const drift = reconcileBlockStates({
+        expected: project.blockStates || [],
+        actual: scan.blocks,
+    });
+
+    return {
+        scan,
+        lastScan: {
+            scannedAt: new Date().toISOString(),
+            bounds: scan.bounds,
+            drift,
+        },
+    };
+}
+
 function getActivePart(project) {
     const partId = project.activeSelection?.partIds?.[0];
     if (!partId) {
@@ -557,24 +575,15 @@ export class BuilderCore {
             };
         }
 
-        const bounds = getProjectScanBounds(project);
-        const scan = await scanVolume(this.world, bounds);
-        const drift = reconcileBlockStates({
-            expected: project.blockStates || [],
-            actual: scan.blocks,
-        });
+        const { scan, lastScan } = await createProjectScanSummary(this.world, project);
 
-        project.lastScan = {
-            scannedAt: new Date().toISOString(),
-            bounds: scan.bounds,
-            drift,
-        };
+        project.lastScan = lastScan;
         await this.store.save(registry);
 
         return {
-            ok: drift.ok,
-            message: formatDriftSummary(drift),
-            drift,
+            ok: lastScan.drift.ok,
+            message: formatDriftSummary(lastScan.drift),
+            drift: lastScan.drift,
             scan,
         };
     }
@@ -639,11 +648,7 @@ export class BuilderCore {
         project.edits.push(diff);
         project.redo = [];
         project.lastScan = execution.verification?.drift
-            ? {
-                scannedAt: new Date().toISOString(),
-                bounds: execution.verification.scan.bounds,
-                drift: execution.verification.drift,
-            }
+            ? (await createProjectScanSummary(this.world, project)).lastScan
             : null;
         await this.store.save(registry);
 

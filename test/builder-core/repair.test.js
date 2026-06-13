@@ -69,6 +69,38 @@ test('repair reports clean state when no registered drift exists', async () => {
     assert.deepEqual(repair.commands, []);
 });
 
+test('repair status preserves unexpected drift after fixing registered blocks', async () => {
+    const world = new FakeWorld();
+    const store = createMemoryStore();
+    const core = new BuilderCore({ store, world });
+
+    await core.build('build a stone house 2x1x1');
+    world.setBlock([1, 0, 0], 'air');
+    world.setBlock([2, 0, 0], 'dirt');
+
+    const beforeRepair = await core.scan();
+
+    assert.deepEqual(beforeRepair.drift.summary, {
+        missing: 1,
+        changed: 0,
+        unexpected: 1,
+    });
+
+    const repair = await core.repair('repair this');
+
+    assert.equal(repair.ok, true);
+    assert.equal(world.getBlock([1, 0, 0]), 'stone');
+    assert.equal(world.getBlock([2, 0, 0]), 'dirt');
+
+    const status = await core.status();
+
+    assert.deepEqual(status.lastScan.drift.summary, {
+        missing: 0,
+        changed: 0,
+        unexpected: 1,
+    });
+});
+
 test('undoing and redoing repair preserves registered block state and metadata', async () => {
     const world = new FakeWorld();
     const store = createMemoryStore();
