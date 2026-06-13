@@ -44,6 +44,29 @@ test('MinecraftCommandWorld sends commands and scans loaded bot blocks', async (
     ]);
 });
 
+test('MinecraftCommandWorld does not treat sent commands as scanned blocks', async () => {
+    const sent = [];
+    const world = new MinecraftCommandWorld({
+        chat(command) {
+            sent.push(command);
+        },
+    });
+
+    world.executeCommands([
+        '/setblock 0 0 0 stone',
+    ]);
+
+    const scan = await world.scanVolume({ min: [0, 0, 0], max: [0, 0, 0] });
+
+    assert.equal(world.getBlock([0, 0, 0]), 'air');
+    assert.deepEqual(scan.blocks, [
+        { pos: [0, 0, 0], block: 'air' },
+    ]);
+    assert.deepEqual(sent, [
+        '/setblock 0 0 0 stone',
+    ]);
+});
+
 test('getBuilderForAgent caches builders and writes the agent registry path', async () => {
     const previousCwd = process.cwd();
     const tempDir = await mkdtemp(join(tmpdir(), 'mindcraft-builder-session-'));

@@ -27,6 +27,12 @@ test('build command executes a simple request through bot chat', async () => {
     const agent = {
         name: 'builder_command_agent',
         bot: {
+            blockAt(pos) {
+                if ((pos.x === 0 || pos.x === 1) && pos.y === 0 && pos.z === 0) {
+                    return { name: 'stone' };
+                }
+                return null;
+            },
             chat(command) {
                 sent.push(command);
             },
